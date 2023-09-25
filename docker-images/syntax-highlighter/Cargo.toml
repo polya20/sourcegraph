@@ -3,7 +3,7 @@ name = "syntect_server"
 version = "1.0.1"
 authors = [
     "TJ DeVries <devries.timothyj@gmail.com>",
-    "Stephen Gutekanst <stephen.gutekanst@gmail.com>"
+    "Stephen Gutekanst <stephen.gutekanst@gmail.com>",
 ]
 edition = "2021"
 license = "MIT"
@@ -24,13 +24,18 @@ sg-syntax = { path = "./crates/sg-syntax" }
 scip-treesitter = { path = "./crates/scip-treesitter" }
 scip-treesitter-languages = { path = "./crates/scip-treesitter-languages" }
 scip-syntax = { path = "./crates/scip-syntax" }
+cody-rpc = { path = "./crates/cody-rpc" }
 # March 20, 2023 - Pinned explicitly with features that match the features
 # required by rocket. Once bazel rules correctly roll up all the features,
 # we can remove this, but until then, this works just fine for building
 # with bazel (and we rarely update rocket, so this is fine).
 futures = { version = "^0.3.27", features = ["std"], default-features = false }
-futures-util = { version = "^0.3.27", features = ["std"], default-features = false }
-futures-task = { version = "^0.3.27", features = ["std"], default-features = false }
+futures-util = { version = "^0.3.27", features = [
+    "std",
+], default-features = false }
+futures-task = { version = "^0.3.27", features = [
+    "std",
+], default-features = false }
 
 # Prior version do not build when cross-compiling. It's needed by transitive deps
 # and this forces to bump it.
@@ -41,6 +46,7 @@ members = [
     "crates/sg-syntax",
 
     # later, these will be pulled out to a separate repo
+    "crates/cody-rpc",
     "crates/scip-macros",
     "crates/scip-syntax",
     "crates/scip-treesitter",
@@ -49,7 +55,7 @@ members = [
 
 [workspace.dependencies]
 anyhow = "1"
-clap = { version = "4.1.11", features = [ "derive" ] }
+clap = { version = "4.1.11", features = ["derive"] }
 itertools = "0.10.5"
 rocket = { version = "0.5.0-rc.1", features = ["json"] }
 # See https://stackoverflow.com/questions/76905691/bazel-unable-to-build-external-rust-dependency-with-feature-serde1
@@ -61,9 +67,8 @@ tree-sitter = "0.20.9"
 tree-sitter-highlight = "0.20.1"
 
 # Since there is no version tag, we pin the dependency to a specific revision
-scip = { git = "https://github.com/sourcegraph/scip", rev="1bf111e1cf175569970e95566b379fb2a548d70a" }
+scip = { git = "https://github.com/sourcegraph/scip", rev = "1bf111e1cf175569970e95566b379fb2a548d70a" }
 protobuf = "3"
-
 
 
 [profile.release]
@@ -72,4 +77,4 @@ protobuf = "3"
 debug = true
 
 [dev-dependencies]
-criterion = { version = "0.4", features = [ "html_reports" ] }
+criterion = { version = "0.4", features = ["html_reports"] }
