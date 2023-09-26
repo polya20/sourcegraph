@@ -5,7 +5,8 @@ use std::{
 };
 
 use gix::{bstr::ByteSlice, objs::tree::EntryMode, traverse::tree::Recorder};
-use scip_syntax::{languages::get_tag_configuration, symbols::parse_tree};
+use scip::types::Document;
+use scip_syntax::{globals::parse_tree, languages::get_tag_configuration};
 use scip_treesitter_languages::parsers::BundledParser;
 use tabled::{Table, Tabled};
 
@@ -48,9 +49,13 @@ struct LangStats {
 
 type StatsMap = HashMap<BundledParser, LangStats>;
 
+type Oid = [u8; 20];
+type OidToDocument = HashMap<Oid, Document>;
+
 fn find_all_lens_git() -> StatsMap {
     // let mut n = 0;
     let mut map = StatsMap::new();
+    let mut resolve_symbol_by_lang = HashMap::<BundledParser, OidToDocument>::new();
 
     let repo = gix::open("/Users/auguste.rame/Documents/Repos/sourcegraph/.git").expect("bruh");
 
@@ -66,20 +71,21 @@ fn find_all_lens_git() -> StatsMap {
 
     let mut parser = tree_sitter::Parser::new();
 
-    for a in recorder.records {
-        if a.mode == EntryMode::Blob {
+    for record in recorder.records {
+        if record.mode == EntryMode::Blob {
             // if a.filepath.ends_with(".ts".as_bytes()) {
             let now = Instant::now();
-            let bundled_parser = if let Some(parser) =
-                BundledParser::get_parser_from_extension(if let Ok(path) = a.filepath.to_str() {
+            let bundled_parser = if let Some(parser) = BundledParser::get_parser_from_extension(
+                if let Ok(path) = record.filepath.to_str() {
                     Path::new(path)
                         .extension()
-                        .unwrap_or(a.filepath.to_os_str().expect("a"))
+                        .unwrap_or(record.filepath.to_os_str().expect("a"))
                         .to_str()
                         .expect("abc")
                 } else {
                     continue;
-                }) {
+                },
+            ) {
                 parser
             } else {
                 continue;
@@ -89,8 +95,8 @@ fn find_all_lens_git() -> StatsMap {
                 .set_language(bundled_parser.get_language())
                 .expect("abc");
 
-            let a = &repo.find_object(a.oid).expect("a").data;
-            let source = if let Ok(str) = a.to_str() {
+            let data = &repo.find_object(record.oid).expect("a").data;
+            let source = if let Ok(str) = data.to_str() {
                 str
             } else {
                 continue;
@@ -109,9 +115,17 @@ fn find_all_lens_git() -> StatsMap {
             )
             .expect("a");
 
+            let entry = resolve_symbol_by_lang
+                .entry(bundled_parser.clone())
+                .or_insert(OidToDocument::new());
+
+            let gix::ObjectId::Sha1(oid) = record.oid;
+            entry
+                .entry(oid)
+                .or_insert(scope.into_document(hint, vec![]));
+
             let nanos = now.elapsed().as_nanos();
-            // n +=
-            let entry = map.entry(bundled_parser).or_insert_with(|| LangStats {
+            let entry = map.entry(bundled_parser.clone()).or_insert(LangStats {
                 symbols: 0,
                 lines: 0,
                 nanos: 0,
@@ -119,8 +133,6 @@ fn find_all_lens_git() -> StatsMap {
             entry.lines += source.lines().count();
             entry.symbols += scope.into_document(hint, vec![]).occurrences.len();
             entry.nanos += nanos;
-            // println!("{:#?}", );
-            // }
         }
     }
     return map;

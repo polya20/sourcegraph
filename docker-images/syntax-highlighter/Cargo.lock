@@ -409,6 +409,7 @@ name = "cody-rpc"
 version = "0.1.0"
 dependencies = [
  "gix",
+ "scip",
  "scip-syntax",
  "scip-treesitter-languages",
  "tabled",

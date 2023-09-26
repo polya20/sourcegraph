@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 gix = "0.50.1"
 
+scip.workspace = true
 tree-sitter.workspace = true
 
 scip-syntax = { path = "../scip-syntax" }
