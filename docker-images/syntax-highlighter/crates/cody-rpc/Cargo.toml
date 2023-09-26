@@ -10,5 +10,6 @@ scip.workspace = true
 tree-sitter.workspace = true
 
 scip-syntax = { path = "../scip-syntax" }
+scip-treesitter = { path = "../scip-treesitter" }
 scip-treesitter-languages = { path = "../scip-treesitter-languages" }
 tabled = "0.14.0"

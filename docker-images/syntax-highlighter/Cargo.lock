@@ -411,6 +411,7 @@ dependencies = [
  "gix",
  "scip",
  "scip-syntax",
+ "scip-treesitter",
  "scip-treesitter-languages",
  "tabled",
  "tree-sitter",

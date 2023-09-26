@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use tree_sitter::Node;
 
 #[derive(Debug, PartialEq, Eq, Default)]
@@ -64,6 +66,49 @@ impl PackedRange {
             && other.end_line <= self.end_line
             && (other.start_line != self.start_line || other.start_col >= self.start_col)
             && (other.end_line != self.end_line || other.end_col <= self.end_col)
+    }
+
+    pub fn to_range(&self, str: &str) -> Option<Range<usize>> {
+        let mut col = 0;
+        let mut line = 0;
+
+        let mut start = None;
+        let mut end = None;
+
+        let mut i = 0;
+
+        for char in str.chars() {
+            if self.start_col == col && self.start_line == line {
+                start = Some(i);
+            }
+
+            if self.end_col == col && self.end_line == line {
+                end = Some(i);
+                break;
+            }
+
+            col += 1;
+
+            if char == '\n' {
+                col = 0;
+                line += 1;
+            }
+
+            i += 1;
+        }
+
+        let start = if let Some(start) = start {
+            start
+        } else {
+            return None;
+        };
+        let end = if let Some(end) = end {
+            end
+        } else {
+            return None;
+        };
+
+        return Some(start..end);
     }
 }
 

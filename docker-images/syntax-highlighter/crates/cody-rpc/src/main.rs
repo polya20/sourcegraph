@@ -1,17 +1,18 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::Path,
     time::{Duration, Instant},
 };
 
-use gix::{bstr::ByteSlice, objs::tree::EntryMode, traverse::tree::Recorder};
-use scip::types::Document;
+use gix::{bstr::ByteSlice, objs::tree::EntryMode, traverse::tree::Recorder, Repository};
+use scip::types::{Document, Symbol};
 use scip_syntax::{globals::parse_tree, languages::get_tag_configuration};
 use scip_treesitter_languages::parsers::BundledParser;
 use tabled::{Table, Tabled};
 
 fn main() {
-    let n = find_all_lens_git();
+    let repo = gix::open("/Users/auguste.rame/Documents/Repos/sourcegraph/.git").expect("bruh");
+    let (n, lang_map) = index_repo(&repo).expect("not to fail");
 
     let mut entries = vec![];
 
@@ -51,13 +52,21 @@ type StatsMap = HashMap<BundledParser, LangStats>;
 
 type Oid = [u8; 20];
 type OidToDocument = HashMap<Oid, Document>;
+type OidSet = HashSet<Oid>;
+type NameToOids = HashMap<String, OidSet>;
+type LangAndNameToOids = HashMap<BundledParser, NameToOids>;
 
-fn find_all_lens_git() -> StatsMap {
-    // let mut n = 0;
+struct Index {
+    oid_to_document: OidToDocument,
+    lang_and_name_to_oids: LangAndNameToOids,
+}
+
+fn index_repo<'a>(repo: &Repository) -> Result<(StatsMap, Index), ()> {
     let mut map = StatsMap::new();
-    let mut resolve_symbol_by_lang = HashMap::<BundledParser, OidToDocument>::new();
-
-    let repo = gix::open("/Users/auguste.rame/Documents/Repos/sourcegraph/.git").expect("bruh");
+    let mut index = Index {
+        oid_to_document: OidToDocument::new(),
+        lang_and_name_to_oids: LangAndNameToOids::new(),
+    };
 
     let tree = repo
         .rev_parse_single("HEAD")
@@ -115,14 +124,34 @@ fn find_all_lens_git() -> StatsMap {
             )
             .expect("a");
 
-            let entry = resolve_symbol_by_lang
-                .entry(bundled_parser.clone())
-                .or_insert(OidToDocument::new());
-
             let gix::ObjectId::Sha1(oid) = record.oid;
-            entry
-                .entry(oid)
-                .or_insert(scope.into_document(hint, vec![]));
+            let document = scope.into_document(hint, vec![]);
+
+            let entry = index
+                .lang_and_name_to_oids
+                .entry(bundled_parser.clone())
+                .or_insert(NameToOids::new());
+
+            for occu in &document.occurrences {
+                let symbol = match scip::symbol::parse_symbol(occu.symbol.as_str()) {
+                    Ok(symbol) => symbol,
+                    Err(_) => continue,
+                };
+                let entry = entry
+                    .entry(
+                        symbol
+                            .descriptors
+                            .last()
+                            .clone()
+                            .expect("non-empty symbol")
+                            .name
+                            .clone(),
+                    )
+                    .or_insert(OidSet::new());
+                entry.insert(oid);
+            }
+
+            index.oid_to_document.insert(oid, document);
 
             let nanos = now.elapsed().as_nanos();
             let entry = map.entry(bundled_parser.clone()).or_insert(LangStats {
@@ -135,5 +164,92 @@ fn find_all_lens_git() -> StatsMap {
             entry.nanos += nanos;
         }
     }
-    return map;
+
+    return Ok((map, index));
+}
+
+// fn query(oid: lang_map: &LangMap, language: BundledParser) -> Vec<Symbol> {
+//     let symbols = vec![];
+
+//     match lang_map.get(language) {
+//         Some(oid_to_document) => {},
+//         None => return symbols,
+//     }
+
+//     symbols
+// }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::path::Path;
+    use std::process::Command;
+
+    use gix;
+    use gix::Repository;
+    use scip_treesitter::types::PackedRange;
+
+    fn load_repo(path: &Path) -> Repository {
+        let _ = std::fs::remove_dir_all(path.join(Path::new(".git")));
+
+        Command::new("git")
+            .args(["init"])
+            .current_dir(path)
+            .output()
+            .expect("failed to execute process");
+
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(path)
+            .output()
+            .expect("failed to execute process");
+
+        Command::new("git")
+            .args(["commit", "--no-gpg-sign", "-m", "init"])
+            .current_dir(path)
+            .output()
+            .expect("failed to execute process");
+
+        gix::open(path).expect("Could not init repo!")
+    }
+
+    fn delete_git(path: &Path) {
+        let _ = std::fs::remove_dir_all(path.join(Path::new(".git")));
+    }
+
+    #[test]
+    fn test_typescript() {
+        let repo_path = Path::new("testdata/typescript");
+        let repo = load_repo(&repo_path);
+        let (stats, index) = index_repo(&repo).expect("not to fail");
+
+        let oids = index
+            .lang_and_name_to_oids
+            .get(&BundledParser::Typescript)
+            .unwrap()
+            .get("sayHello")
+            .unwrap();
+
+        for oid in oids {
+            for occu in &index.oid_to_document.get(oid).unwrap().occurrences {
+                let data = &repo.find_object(*oid).unwrap().data;
+                let source = if let Ok(str) = data.to_str() {
+                    str
+                } else {
+                    continue;
+                };
+
+                if occu.enclosing_range.len() != 0 {
+                    let range = PackedRange::from_vec(&occu.enclosing_range)
+                        .unwrap()
+                        .to_range(&source)
+                        .expect("No range");
+
+                    println!("a: {:?} ", &source[range]);
+                }
+            }
+        }
+
+        delete_git(repo_path);
+    }
 }
