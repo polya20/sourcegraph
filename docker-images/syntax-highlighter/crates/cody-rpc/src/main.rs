@@ -1,3 +1,4 @@
+use serde_json::json;
 use std::{
     collections::{HashMap, HashSet},
     path::Path,
@@ -9,8 +10,99 @@ use scip::types::{Document, Symbol};
 use scip_syntax::{globals::parse_tree, languages::get_tag_configuration};
 use scip_treesitter_languages::parsers::BundledParser;
 use tabled::{Table, Tabled};
+use tower_lsp::{jsonrpc, LanguageServer, lsp_types, LspService};
+use tower_lsp::lsp_types::{InitializeParams, InitializeResult};
+use std::error::Error;
+// use lsp_types::{ClientCapabilities, InitializeParams, ServerCapabilities};
 
-fn main() {
+use lsp_server::{Connection, ExtractError, Message, Request, RequestId, Response};
+use serde::{Deserialize, Serialize};
+
+fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
+   // Create the transport. Includes the stdio (stdin and stdout) versions but this could
+   // also be implemented to use sockets or HTTP.
+   let (connection, io_threads) = Connection::stdio();
+
+    main_loop(connection)?;
+
+    eprintln!("shutting down server");
+   Ok(())
+}
+
+fn main_loop(
+    connection: Connection,
+) -> Result<(), Box<dyn Error + Sync + Send>> {
+    eprintln!("starting example main loop");
+    for msg in &connection.receiver {
+        eprintln!("got msg: {msg:?}");
+        match msg {
+            Message::Request(req) => {
+                if connection.handle_shutdown(&req)? {
+                    return Ok(());
+                }
+                eprintln!("got request: {req:?}");
+
+                match cast::<CodyDefinition>(req) {
+                    Ok((id, params)) => {
+                        eprintln!("got cody/definition request #{id}: {params:?}");
+                        let result = Some(CodyDefinitionResponse{pong: params.ping});
+                        let result = serde_json::to_value(&result).unwrap();
+                        let resp = Response { id, result: Some(result), error: None };
+                        connection.sender.send(Message::Response(resp))?;
+                        continue;
+                    }
+                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+                    Err(ExtractError::MethodMismatch(req)) => req,
+                };
+                // ...
+            }
+            Message::Response(resp) => {
+                eprintln!("got response: {resp:?}");
+            }
+            Message::Notification(not) => {
+                eprintln!("got notification: {not:?}");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn cast<R>(req: Request) -> Result<(RequestId, R::Params), ExtractError<Request>>
+    where
+        R: lsp_types::request::Request,
+        R::Params: serde::de::DeserializeOwned,
+{
+    req.extract(R::METHOD)
+}
+
+
+#[derive(Debug, Eq, PartialEq, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodyDefinitionParams {
+    // #[serde(flatten)]
+    pub ping: String,
+
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodyDefinitionResponse {
+    // #[serde(flatten)]
+    pub pong: String,
+
+}
+
+#[derive(Debug)]
+pub enum CodyDefinition {}
+
+impl lsp_types::request::Request for CodyDefinition {
+    type Params = CodyDefinitionParams;
+    type Result = Option<CodyDefinitionResponse>;
+    const METHOD: &'static str = "cody/definition";
+}
+
+
+fn foo() {
     let repo = gix::open("/Users/auguste.rame/Documents/Repos/sourcegraph/.git").expect("bruh");
     let (n, lang_map) = index_repo(&repo).expect("not to fail");
 

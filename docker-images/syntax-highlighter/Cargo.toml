@@ -46,6 +46,7 @@ members = [
     "crates/sg-syntax",
 
     # later, these will be pulled out to a separate repo
+    "crates/lsp-server",
     "crates/cody-rpc",
     "crates/scip-macros",
     "crates/scip-syntax",
