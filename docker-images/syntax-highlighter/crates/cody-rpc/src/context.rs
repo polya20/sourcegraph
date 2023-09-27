@@ -6,7 +6,7 @@ use tree_sitter::LanguageError;
 use crate::types;
 
 pub fn get_symbols(
-    parser: BundledParser,
+    bundled_parser: BundledParser,
     content: String,
     position: types::Position,
 ) -> Result<Vec<String>, ()> {
@@ -14,7 +14,7 @@ pub fn get_symbols(
 
     let mut parser = tree_sitter::Parser::new();
     parser
-        .set_language(parser.language().expect("bruh"))
+        .set_language(bundled_parser.get_language())
         .expect("abc");
 
     let query = tree_sitter::Query::new(
