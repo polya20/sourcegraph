@@ -10,7 +10,7 @@ pub fn get_symbols(
     content: String,
     position: types::Position,
 ) -> Result<Vec<String>, ()> {
-    let mut symbols = Vec::new();
+    let mut symbols = Vec::<String>::new();
 
     let mut parser = tree_sitter::Parser::new();
     parser
@@ -25,11 +25,12 @@ pub fn get_symbols(
 
     let capture_names = query.capture_names();
 
-    let tree = parser.parse(content.as_bytes(), None).expect("bruh");
-
-    eprintln!("pogchamp content {:?}", content);
+    let source_bytes = content.as_bytes();
+    let tree = parser.parse(source_bytes, None).expect("bruh");
 
     eprintln!("pogchamp aaa");
+
+    // eprintln!("pogchamp content {:?}", content.as_bytes());
 
     let mut cursor = tree_sitter::QueryCursor::new();
     let cursor_range = PackedRange {
@@ -40,13 +41,12 @@ pub fn get_symbols(
     };
 
     for m in cursor.matches(&query, tree.root_node(), content.as_bytes()) {
-        // let node = m.node;
+        let mut identifier = None;
+
         for capture in m.captures {
             let capture_name = capture_names
                 .get(capture.index as usize)
                 .expect("capture indexes should always work");
-
-            let mut identifier = None;
 
             match capture_name.as_str() {
                 "identifier" => {
@@ -62,13 +62,19 @@ pub fn get_symbols(
                 }
                 &_ => {}
             }
+        }
 
-            match identifier {
-                Some(identifier) => {
-                    symbols.push(content[identifier.byte_range()].to_string());
-                }
-                None => panic!("literally impossible"),
+        eprintln!("abc {:?}", identifier);
+
+        match identifier {
+            Some(identifier) => {
+                eprintln!(
+                    "{:?}",
+                    identifier.utf8_text(source_bytes).unwrap().to_string()
+                );
+                symbols.push(identifier.utf8_text(source_bytes).unwrap().to_string());
             }
+            None => panic!("literally impossible"),
         }
     }
 

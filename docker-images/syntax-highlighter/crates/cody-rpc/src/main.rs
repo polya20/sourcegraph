@@ -90,20 +90,25 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                                 )
                                 .expect("bruh");
 
-                                eprintln!("pogchamp 2");
+                                eprintln!("pogchamp 2 {:?}", content_symbols_names);
 
                                 for symbol in content_symbols_names {
-                                    let oids = index
+                                    let oids = match index
                                         .lang_and_name_to_oids
                                         .get(&BundledParser::Typescript)
-                                        .unwrap()
+                                        .expect("no lang bundle")
                                         .get(&symbol)
-                                        .unwrap();
+                                    {
+                                        Some(symbol) => symbol,
+                                        None => continue,
+                                    };
 
                                     for oid in oids {
-                                        let document = index.oid_to_document.get(oid).unwrap();
+                                        let document =
+                                            index.oid_to_document.get(oid).expect("no document");
                                         for occu in &document.occurrences {
-                                            let data = &repo.find_object(*oid).unwrap().data;
+                                            let data =
+                                                &repo.find_object(*oid).expect("no oid").data;
                                             let source = if let Ok(str) = data.to_str() {
                                                 str
                                             } else {
@@ -113,7 +118,7 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                                             if occu.enclosing_range.len() != 0 {
                                                 let range =
                                                     PackedRange::from_vec(&occu.enclosing_range)
-                                                        .unwrap()
+                                                        .expect("no vec range")
                                                         .to_range(&source)
                                                         .expect("No range");
 
