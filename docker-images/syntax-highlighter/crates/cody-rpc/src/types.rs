@@ -97,8 +97,6 @@ impl lsp_types::request::Request for Shutdown {
     const METHOD: &'static str = "bfg/shutdown";
 }
 
-// Notifications
-
 // bfg/gitRevision/didChange
 
 #[derive(Debug, Eq, PartialEq, Clone, Deserialize, Serialize)]
@@ -109,10 +107,13 @@ pub struct GitRevisionDidChangeParams {
 
 pub enum GitRevisionDidChange {}
 
-impl lsp_types::notification::Notification for GitRevisionDidChange {
+impl lsp_types::request::Request for GitRevisionDidChange {
     type Params = GitRevisionDidChangeParams;
+    type Result = ();
     const METHOD: &'static str = "bfg/gitRevision/didChange";
 }
+
+// Notifications
 
 // Casting
 

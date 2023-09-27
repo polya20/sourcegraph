@@ -136,6 +136,35 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                             Err(ExtractError::MethodMismatch(req)) => panic!("bruh"),
                         };
                     }
+                    "bfg/gitRevision/didChange" => {
+                        match types::cast_request::<types::GitRevisionDidChange>(req) {
+                            Ok((id, params)) => {
+                                let new_git_dir = url::Url::parse(&params.git_directory_uri)
+                                    .expect("bruh")
+                                    .to_file_path()
+                                    .expect("bruh");
+
+                                let repo = gix::open(&new_git_dir).expect("bruh");
+                                let (_, index) = index_repo(&repo).expect("not to fail");
+
+                                indices.insert(new_git_dir.to_path_buf(), index);
+
+                                git_dir = Some(new_git_dir);
+
+                                let result = Some(());
+                                let result = serde_json::to_value(&result).unwrap();
+                                let resp = Response {
+                                    id,
+                                    result: Some(result),
+                                    error: None,
+                                };
+                                connection.sender.send(Message::Response(resp))?;
+                                continue;
+                            }
+                            Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+                            Err(ExtractError::MethodMismatch(req)) => req,
+                        };
+                    }
                     &_ => {}
                 }
             }
@@ -144,25 +173,6 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
             }
             Message::Notification(not) => {
                 eprintln!("got notification: {not:?}");
-
-                match types::cast_notification::<types::GitRevisionDidChange>(not) {
-                    Ok(params) => {
-                        let new_git_dir = url::Url::parse(&params.git_directory_uri)
-                            .expect("bruh")
-                            .to_file_path()
-                            .expect("bruh");
-
-                        let repo = gix::open(&new_git_dir).expect("bruh");
-                        let (_, index) = index_repo(&repo).expect("not to fail");
-
-                        indices.insert(new_git_dir.to_path_buf(), index);
-
-                        git_dir = Some(new_git_dir);
-                        continue;
-                    }
-                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
-                    Err(ExtractError::MethodMismatch(req)) => req,
-                };
             }
         }
     }
