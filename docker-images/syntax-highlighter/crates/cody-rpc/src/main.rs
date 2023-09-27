@@ -70,8 +70,6 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                             Ok((id, params)) => {
                                 let git_dir = git_dir.clone().expect("no git dir");
 
-                                eprintln!("pogchamp 0");
-
                                 let repo = gix::open(&git_dir).expect("bruh");
                                 let index = match indices.get(&git_dir) {
                                     Some(index) => index,
@@ -80,26 +78,22 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                                     }
                                 };
 
-                                eprintln!("pogchamp 1");
-
                                 let mut symbols = vec![];
-                                let content_symbols_names = context::get_symbols(
+                                let identifiers = context::get_identifiers_near_cursor(
                                     BundledParser::Typescript,
                                     params.content,
                                     params.position,
                                 )
                                 .expect("bruh");
 
-                                eprintln!("pogchamp 2 {:?}", content_symbols_names);
-
-                                for symbol in content_symbols_names {
+                                for identifier in identifiers {
                                     let oids = match index
                                         .lang_and_name_to_oids
                                         .get(&BundledParser::Typescript)
                                         .expect("no lang bundle")
-                                        .get(&symbol)
+                                        .get(&identifier)
                                     {
-                                        Some(symbol) => symbol,
+                                        Some(identifier) => identifier,
                                         None => continue,
                                     };
 
@@ -115,18 +109,28 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                                                 continue;
                                             };
 
-                                            if occu.enclosing_range.len() != 0 {
-                                                let range =
-                                                    PackedRange::from_vec(&occu.enclosing_range)
-                                                        .expect("no vec range")
-                                                        .to_range(&source)
-                                                        .expect("No range");
+                                            if scip::symbol::parse_symbol(occu.symbol.as_str())
+                                                .unwrap()
+                                                .descriptors
+                                                .last()
+                                                .unwrap()
+                                                .name
+                                                == identifier
+                                            {
+                                                if occu.enclosing_range.len() != 0 {
+                                                    let range = PackedRange::from_vec(
+                                                        &occu.enclosing_range,
+                                                    )
+                                                    .expect("no vec range")
+                                                    .to_range(&source)
+                                                    .expect("No range");
 
-                                                symbols.push(SymbolContextSnippet {
-                                                    file_name: document.relative_path.clone(),
-                                                    symbol: occu.symbol.clone(),
-                                                    content: source[range].to_string(),
-                                                })
+                                                    symbols.push(SymbolContextSnippet {
+                                                        file_name: document.relative_path.clone(),
+                                                        symbol: occu.symbol.clone(),
+                                                        content: source[range].to_string(),
+                                                    })
+                                                }
                                             }
                                         }
                                     }

@@ -5,12 +5,12 @@ use tree_sitter::LanguageError;
 
 use crate::types;
 
-pub fn get_symbols(
+pub fn get_identifiers_near_cursor(
     bundled_parser: BundledParser,
     content: String,
     position: types::Position,
 ) -> Result<Vec<String>, ()> {
-    let mut symbols = Vec::<String>::new();
+    let mut identifiers = Vec::<String>::new();
 
     let mut parser = tree_sitter::Parser::new();
     parser
@@ -27,10 +27,6 @@ pub fn get_symbols(
 
     let source_bytes = content.as_bytes();
     let tree = parser.parse(source_bytes, None).expect("bruh");
-
-    eprintln!("pogchamp aaa");
-
-    // eprintln!("pogchamp content {:?}", content.as_bytes());
 
     let mut cursor = tree_sitter::QueryCursor::new();
     let cursor_range = PackedRange {
@@ -64,19 +60,13 @@ pub fn get_symbols(
             }
         }
 
-        eprintln!("abc {:?}", identifier);
-
         match identifier {
             Some(identifier) => {
-                eprintln!(
-                    "{:?}",
-                    identifier.utf8_text(source_bytes).unwrap().to_string()
-                );
-                symbols.push(identifier.utf8_text(source_bytes).unwrap().to_string());
+                identifiers.push(identifier.utf8_text(source_bytes).unwrap().to_string());
             }
             None => panic!("literally impossible"),
         }
     }
 
-    Ok(symbols)
+    Ok(identifiers)
 }

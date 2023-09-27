@@ -97,6 +97,14 @@ impl PackedRange {
             i += 1;
         }
 
+        if self.start_col == col && self.start_line == line {
+            start = Some(i);
+        }
+
+        if self.end_col == col && self.end_line == line {
+            end = Some(i);
+        }
+
         let start = if let Some(start) = start {
             start
         } else {

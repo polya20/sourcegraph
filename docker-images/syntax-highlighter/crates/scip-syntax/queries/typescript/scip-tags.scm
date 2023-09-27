@@ -2,7 +2,7 @@
 
 (module name: (string (string_fragment) @descriptor.namespace) body: (_) @scope)
 
-(interface_declaration name: (_) @descriptor.type body: (_) @scope)
+(interface_declaration name: (_) @descriptor.type body: (_) @scope) @enclosing
 (interface_declaration
     (object_type
         [
