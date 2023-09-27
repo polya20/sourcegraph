@@ -22,9 +22,14 @@ pub fn get_symbols(
         include_scip_query!("typescript", "context"),
     )
     .expect("bruh");
+
     let capture_names = query.capture_names();
 
-    let tree = parser.parse(&content, None).expect("bruh");
+    let tree = parser.parse(content.as_bytes(), None).expect("bruh");
+
+    eprintln!("pogchamp content {:?}", content);
+
+    eprintln!("pogchamp aaa");
 
     let mut cursor = tree_sitter::QueryCursor::new();
     let cursor_range = PackedRange {

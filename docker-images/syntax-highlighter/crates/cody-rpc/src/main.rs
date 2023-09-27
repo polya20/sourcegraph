@@ -70,11 +70,17 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                             Ok((id, params)) => {
                                 let git_dir = git_dir.clone().expect("no git dir");
 
+                                eprintln!("pogchamp 0");
+
                                 let repo = gix::open(&git_dir).expect("bruh");
                                 let index = match indices.get(&git_dir) {
                                     Some(index) => index,
-                                    None => break,
+                                    None => {
+                                        panic!("repo not found {:?} {:?}", &git_dir, indices.keys())
+                                    }
                                 };
+
+                                eprintln!("pogchamp 1");
 
                                 let mut symbols = vec![];
                                 let content_symbols_names = context::get_symbols(
@@ -83,6 +89,8 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                                     params.position,
                                 )
                                 .expect("bruh");
+
+                                eprintln!("pogchamp 2");
 
                                 for symbol in content_symbols_names {
                                     let oids = index
