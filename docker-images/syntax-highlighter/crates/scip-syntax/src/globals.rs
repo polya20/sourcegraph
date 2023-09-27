@@ -11,6 +11,7 @@ pub struct Scope {
     pub ident_range: PackedRange,
     pub scope_range: PackedRange,
     pub globals: Vec<Global>,
+    pub enclosing: Option<PackedRange>,
     pub children: Vec<Scope>,
     pub descriptors: Vec<Descriptor>,
     pub kind: symbol_information::Kind,
@@ -92,7 +93,11 @@ impl Scope {
                 range: self.ident_range.to_vec(),
                 symbol: symbol.clone(),
                 symbol_roles: scip::types::SymbolRole::Definition.value(),
-                enclosing_range: self.scope_range.to_vec(),
+                enclosing_range: match &self.enclosing {
+                    Some(enclosing) => enclosing,
+                    None => &self.scope_range,
+                }
+                .to_vec(),
                 ..Default::default()
             });
 
@@ -232,6 +237,7 @@ pub fn parse_tree<'a>(
                         scope_range: scope_ident.node.into(),
                         globals: vec![],
                         children: vec![],
+                        enclosing: enclosing_node.map(|n| n.into()),
                         descriptors,
                         kind,
                     }),
@@ -285,6 +291,7 @@ pub fn parse_tree<'a>(
         ident_range: root_node.into(),
         scope_range: root_node.into(),
         globals: vec![],
+        enclosing: None,
         children: vec![],
         descriptors: vec![],
         kind: symbol_information::Kind::UnspecifiedKind,

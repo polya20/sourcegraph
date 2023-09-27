@@ -51,7 +51,7 @@ pub fn get_identifiers_near_cursor(
         end_col: position.character as i32,
     };
 
-    for m in cursor.matches(&query, tree.root_node(), content.as_bytes()) {
+    for m in cursor.matches(&query, tree.root_node(), source_bytes) {
         let mut identifier = None;
 
         for capture in m.captures {
@@ -79,7 +79,7 @@ pub fn get_identifiers_near_cursor(
             Some(identifier) => {
                 identifiers.push(identifier.utf8_text(source_bytes).unwrap().to_string());
             }
-            None => panic!("literally impossible"),
+            None => {}
         }
     }
 
@@ -138,9 +138,95 @@ pub fn symbol_snippets_from_identifier(
                         file_name: document.relative_path.clone(),
                         symbol: occu.symbol.clone(),
                         content: source[range].to_string(),
-                    })
+                    });
+
+                    snippets.append(
+                        &mut find_related_symbol_snippets(
+                            repo,
+                            index,
+                            source.to_string(),
+                            PackedRange::from_vec(&occu.range).expect("no vec range"),
+                            depth + 1,
+                            max_depth,
+                        )
+                        .expect("failed to find related symbol snippets"),
+                    );
                 }
             }
+        }
+    }
+
+    Ok(snippets)
+}
+
+pub fn find_related_symbol_snippets(
+    repo: &Repository,
+    index: &Index,
+
+    content: String,
+    identifier_range: PackedRange,
+
+    depth: u8,
+    max_depth: u8,
+) -> Result<Vec<SymbolContextSnippet>, ()> {
+    let mut snippets = vec![];
+
+    let mut parser = tree_sitter::Parser::new();
+    parser
+        .set_language(BundledParser::Typescript.get_language())
+        .expect("abc");
+
+    let query = tree_sitter::Query::new(
+        parser.language().expect("bruh"),
+        include_scip_query!("typescript", "context"),
+    )
+    .expect("bruh");
+
+    let capture_names = query.capture_names();
+
+    let source_bytes = content.as_bytes();
+    let tree = parser.parse(source_bytes, None).expect("bruh");
+
+    let mut cursor = tree_sitter::QueryCursor::new();
+
+    for m in cursor.matches(&query, tree.root_node(), source_bytes) {
+        let mut name = None;
+        let mut related = vec![];
+
+        for capture in m.captures {
+            let capture_name = capture_names
+                .get(capture.index as usize)
+                .expect("capture indexes should always work");
+
+            match capture_name.as_str() {
+                "name" => {
+                    name = Some(capture.node);
+                }
+                "related" => {
+                    related.push(capture.node);
+                }
+                &_ => {}
+            }
+        }
+
+        match name {
+            Some(name) => {
+                if PackedRange::from_vec(&name.to_scip_range()).expect("no vec range")
+                    == identifier_range
+                {
+                    for related in related {
+                        eprint!("{}", related.utf8_text(source_bytes).unwrap().to_string());
+                        snippets.append(&mut symbol_snippets_from_identifier(
+                            repo,
+                            index,
+                            related.utf8_text(source_bytes).unwrap().to_string(),
+                            depth,
+                            max_depth,
+                        )?)
+                    }
+                }
+            }
+            None => {}
         }
     }
 
