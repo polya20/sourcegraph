@@ -76,7 +76,10 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                                     }
                                 };
 
-                                let symbol_snippets = context::symbol_snippets_near_cursor(
+                                let mut symbol_snippets = HashSet::new();
+
+                                context::symbol_snippets_near_cursor(
+                                    &mut symbol_snippets,
                                     &repo,
                                     index,
                                     BundledParser::Typescript,
@@ -88,7 +91,7 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                                 .expect("bruh");
 
                                 let result = Some(types::ContextAtPositionResponse {
-                                    symbols: symbol_snippets,
+                                    symbols: symbol_snippets.into_iter().collect(),
                                     files: vec![],
                                 });
                                 let result = serde_json::to_value(&result).unwrap();

@@ -51,7 +51,7 @@ pub struct ContextAtPositionParams {
     pub context_range: Option<Range>,
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, Deserialize, Serialize)]
+#[derive(Debug, Eq, PartialEq, Clone, Deserialize, Serialize, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct SymbolContextSnippet {
     pub file_name: String,

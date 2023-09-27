@@ -21,6 +21,7 @@ pub struct Index {
 }
 
 pub fn symbol_snippets_near_cursor(
+    snippets: &mut HashSet<SymbolContextSnippet>,
     repo: &Repository,
     index: &Index,
 
@@ -30,9 +31,7 @@ pub fn symbol_snippets_near_cursor(
 
     depth: u8,
     max_depth: u8,
-) -> Result<Vec<SymbolContextSnippet>, ()> {
-    let mut snippets = vec![];
-
+) -> Result<(), ()> {
     let mut parser = tree_sitter::Parser::new();
     parser
         .set_language(bundled_parser.get_language())
@@ -57,7 +56,7 @@ pub fn symbol_snippets_near_cursor(
         end_col: position.character as i32,
     };
 
-    for m in cursor.matches(&query, tree.root_node(), source_bytes) {
+    'matches: for m in cursor.matches(&query, tree.root_node(), source_bytes) {
         let mut identifier = None;
 
         for capture in m.captures {
@@ -74,7 +73,7 @@ pub fn symbol_snippets_near_cursor(
                         .unwrap()
                         .contains(&cursor_range)
                     {
-                        continue;
+                        continue 'matches;
                     }
                 }
                 &_ => {}
@@ -82,24 +81,23 @@ pub fn symbol_snippets_near_cursor(
         }
 
         match identifier {
-            Some(identifier) => snippets.append(
-                &mut symbol_snippets_from_identifier(
-                    &repo,
-                    index,
-                    identifier.utf8_text(source_bytes).unwrap().to_string(),
-                    0,
-                    4,
-                )
-                .unwrap(),
-            ),
+            Some(identifier) => symbol_snippets_from_identifier(
+                snippets,
+                &repo,
+                index,
+                identifier.utf8_text(source_bytes).unwrap().to_string(),
+                0,
+                4,
+            )?,
             None => {}
         }
     }
 
-    Ok(snippets)
+    Ok(())
 }
 
 pub fn symbol_snippets_from_identifier(
+    snippets: &mut HashSet<SymbolContextSnippet>,
     repo: &Repository,
     index: &Index,
 
@@ -107,11 +105,9 @@ pub fn symbol_snippets_from_identifier(
 
     depth: u8,
     max_depth: u8,
-) -> Result<Vec<SymbolContextSnippet>, ()> {
-    let mut snippets = vec![];
-
+) -> Result<(), ()> {
     if depth >= max_depth {
-        return Ok(snippets);
+        return Ok(());
     }
 
     let oids = match index
@@ -121,7 +117,7 @@ pub fn symbol_snippets_from_identifier(
         .get(&identifier)
     {
         Some(identifier) => identifier,
-        None => return Ok(snippets),
+        None => return Ok(()),
     };
 
     for oid in oids {
@@ -148,32 +144,31 @@ pub fn symbol_snippets_from_identifier(
                         .to_range(&source)
                         .expect("No range");
 
-                    snippets.push(SymbolContextSnippet {
+                    snippets.insert(SymbolContextSnippet {
                         file_name: document.relative_path.clone(),
                         symbol: occu.symbol.clone(),
                         content: source[range].to_string(),
                     });
 
-                    snippets.append(
-                        &mut find_related_symbol_snippets(
-                            repo,
-                            index,
-                            source.to_string(),
-                            PackedRange::from_vec(&occu.range).expect("no vec range"),
-                            depth + 1,
-                            max_depth,
-                        )
-                        .expect("failed to find related symbol snippets"),
-                    );
+                    find_related_symbol_snippets(
+                        snippets,
+                        repo,
+                        index,
+                        source.to_string(),
+                        PackedRange::from_vec(&occu.range).expect("no vec range"),
+                        depth + 1,
+                        max_depth,
+                    )?;
                 }
             }
         }
     }
 
-    Ok(snippets)
+    Ok(())
 }
 
 pub fn find_related_symbol_snippets(
+    snippets: &mut HashSet<SymbolContextSnippet>,
     repo: &Repository,
     index: &Index,
 
@@ -182,9 +177,7 @@ pub fn find_related_symbol_snippets(
 
     depth: u8,
     max_depth: u8,
-) -> Result<Vec<SymbolContextSnippet>, ()> {
-    let mut snippets = vec![];
-
+) -> Result<(), ()> {
     let mut parser = tree_sitter::Parser::new();
     parser
         .set_language(BundledParser::Typescript.get_language())
@@ -230,13 +223,14 @@ pub fn find_related_symbol_snippets(
                 {
                     for related in related {
                         eprint!("{}", related.utf8_text(source_bytes).unwrap().to_string());
-                        snippets.append(&mut symbol_snippets_from_identifier(
+                        symbol_snippets_from_identifier(
+                            snippets,
                             repo,
                             index,
                             related.utf8_text(source_bytes).unwrap().to_string(),
                             depth,
                             max_depth,
-                        )?)
+                        )?
                     }
                 }
             }
@@ -244,5 +238,5 @@ pub fn find_related_symbol_snippets(
         }
     }
 
-    Ok(snippets)
+    Ok(())
 }
