@@ -76,22 +76,16 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                                     }
                                 };
 
-                                let mut symbol_snippets = vec![];
-                                let identifiers = context::get_identifiers_near_cursor(
+                                let symbol_snippets = context::symbol_snippets_near_cursor(
+                                    &repo,
+                                    index,
                                     BundledParser::Typescript,
                                     params.content,
                                     params.position,
+                                    0,
+                                    4,
                                 )
                                 .expect("bruh");
-
-                                for identifier in identifiers {
-                                    symbol_snippets.append(
-                                        &mut context::symbol_snippets_from_identifier(
-                                            &repo, index, identifier, 0, 4,
-                                        )
-                                        .unwrap(),
-                                    )
-                                }
 
                                 let result = Some(types::ContextAtPositionResponse {
                                     symbols: symbol_snippets,

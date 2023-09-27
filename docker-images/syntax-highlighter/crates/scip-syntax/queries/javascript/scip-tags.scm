@@ -34,7 +34,7 @@
 ;; class X { ... }
 (class_declaration
   name: (_) @descriptor.type
-  body: (_) @scope)
+  body: (_) @scope) @enclosing
 
 (class_declaration
  (class_body

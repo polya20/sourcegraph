@@ -20,12 +20,18 @@ pub struct Index {
     pub lang_and_name_to_oids: LangAndNameToOids,
 }
 
-pub fn get_identifiers_near_cursor(
+pub fn symbol_snippets_near_cursor(
+    repo: &Repository,
+    index: &Index,
+
     bundled_parser: BundledParser,
     content: String,
     position: types::Position,
-) -> Result<Vec<String>, ()> {
-    let mut identifiers = Vec::<String>::new();
+
+    depth: u8,
+    max_depth: u8,
+) -> Result<Vec<SymbolContextSnippet>, ()> {
+    let mut snippets = vec![];
 
     let mut parser = tree_sitter::Parser::new();
     parser
@@ -76,19 +82,27 @@ pub fn get_identifiers_near_cursor(
         }
 
         match identifier {
-            Some(identifier) => {
-                identifiers.push(identifier.utf8_text(source_bytes).unwrap().to_string());
-            }
+            Some(identifier) => snippets.append(
+                &mut symbol_snippets_from_identifier(
+                    &repo,
+                    index,
+                    identifier.utf8_text(source_bytes).unwrap().to_string(),
+                    0,
+                    4,
+                )
+                .unwrap(),
+            ),
             None => {}
         }
     }
 
-    Ok(identifiers)
+    Ok(snippets)
 }
 
 pub fn symbol_snippets_from_identifier(
     repo: &Repository,
     index: &Index,
+
     identifier: String,
 
     depth: u8,
