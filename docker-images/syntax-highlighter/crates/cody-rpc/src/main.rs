@@ -13,6 +13,7 @@ use std::error::Error;
 use tabled::{Table, Tabled};
 // use lsp_types::{ClientCapabilities, InitializeParams, ServerCapabilities};
 
+use crate::types::SymbolContextSnippet;
 use lsp_server::{Connection, ExtractError, Message, Notification, Request, RequestId, Response};
 use serde::{Deserialize, Serialize};
 
@@ -66,7 +67,6 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                     "bfg/contextAtPosition" => {
                         match types::cast_request::<types::ContextAtPosition>(req) {
                             Ok((id, params)) => {
-                                let mut symbol_snippets = vec![];
                                 let git_dir = match git_dir.clone() {
                                     Some(dir) => dir,
                                     None => {
@@ -93,7 +93,8 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                                     }
                                 };
 
-                                let mut symbol_snippets = HashSet::new();
+                                let mut symbol_snippets: HashSet<SymbolContextSnippet> =
+                                    HashSet::new();
 
                                 context::symbol_snippets_near_cursor(
                                     &mut symbol_snippets,
