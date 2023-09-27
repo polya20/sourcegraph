@@ -41,7 +41,7 @@ pub struct Range {
     pub end: Position,
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ContextAtPositionParams {
     pub uri: String,

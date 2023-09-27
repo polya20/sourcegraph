@@ -35,13 +35,13 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
     let mut indices = RepoIndices::new();
 
     for msg in &connection.receiver {
-        eprintln!("got msg: {msg:?}");
+        // eprintln!("got msg: {msg:?}");
         match msg {
             Message::Request(req) => {
                 if connection.handle_shutdown(&req)? {
                     return Ok(());
                 }
-                eprintln!("got request: {req:?}");
+                // eprintln!("got request: {req:?}");
 
                 match req.method.as_str() {
                     "bfg/initialize" => {
@@ -66,7 +66,24 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                     "bfg/contextAtPosition" => {
                         match types::cast_request::<types::ContextAtPosition>(req) {
                             Ok((id, params)) => {
-                                let git_dir = git_dir.clone().expect("no git dir");
+                                let mut symbol_snippets = vec![];
+                                let git_dir = match git_dir.clone() {
+                                    Some(dir) => dir,
+                                    None => {
+                                        let response = Some(types::ContextAtPositionResponse {
+                                            symbols: vec![],
+                                            files: vec![],
+                                        });
+                                        let json_result = serde_json::to_value(&response).unwrap();
+                                        let resp = Response {
+                                            id,
+                                            result: Some(json_result),
+                                            error: None,
+                                        };
+                                        connection.sender.send(Message::Response(resp))?;
+                                        continue;
+                                    }
+                                };
 
                                 let repo = gix::open(&git_dir).expect("bruh");
                                 let index = match indices.get(&git_dir) {
@@ -90,11 +107,11 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                                 )
                                 .expect("bruh");
 
-                                let result = Some(types::ContextAtPositionResponse {
+                                let response = Some(types::ContextAtPositionResponse {
                                     symbols: symbol_snippets.into_iter().collect(),
                                     files: vec![],
                                 });
-                                let result = serde_json::to_value(&result).unwrap();
+                                let result = serde_json::to_value(&response).unwrap();
                                 let resp = Response {
                                     id,
                                     result: Some(result),
