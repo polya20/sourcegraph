@@ -33,6 +33,7 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
 fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>> {
     eprintln!("starting example main loop");
 
+    let mut git_dir: Option<PathBuf> = None;
     let mut indices = RepoIndices::new();
 
     for msg in &connection.receiver {
@@ -67,10 +68,7 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                     "bfg/contextAtPosition" => {
                         match types::cast_request::<types::ContextAtPosition>(req) {
                             Ok((id, params)) => {
-                                let git_dir = url::Url::parse(&params.uri)
-                                    .expect("bruh")
-                                    .to_file_path()
-                                    .expect("bruh");
+                                let git_dir = git_dir.clone().expect("no git dir");
 
                                 let repo = gix::open(&git_dir).expect("bruh");
                                 let index = match indices.get(&git_dir) {
@@ -149,15 +147,17 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
 
                 match types::cast_notification::<types::GitRevisionDidChange>(not) {
                     Ok(params) => {
-                        let git_dir = url::Url::parse(&params.git_directory_uri)
+                        let new_git_dir = url::Url::parse(&params.git_directory_uri)
                             .expect("bruh")
                             .to_file_path()
                             .expect("bruh");
 
-                        let repo = gix::open(&git_dir).expect("bruh");
+                        let repo = gix::open(&new_git_dir).expect("bruh");
                         let (_, index) = index_repo(&repo).expect("not to fail");
 
-                        indices.insert(git_dir, index);
+                        indices.insert(new_git_dir.to_path_buf(), index);
+
+                        git_dir = Some(new_git_dir);
                         continue;
                     }
                     Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
