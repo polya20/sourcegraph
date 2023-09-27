@@ -1,9 +1,24 @@
+use std::collections::{HashMap, HashSet};
+
+use gix::bstr::ByteSlice;
+use gix::Repository;
+use scip::types::Document;
 use scip_macros::include_scip_query;
 use scip_treesitter::{types::PackedRange, NodeToScipRange};
 use scip_treesitter_languages::parsers::BundledParser;
-use tree_sitter::LanguageError;
 
-use crate::types;
+use crate::types::{self, SymbolContextSnippet};
+
+pub type Oid = [u8; 20];
+pub type OidToDocument = HashMap<Oid, Document>;
+pub type OidSet = HashSet<Oid>;
+pub type NameToOids = HashMap<String, OidSet>;
+pub type LangAndNameToOids = HashMap<BundledParser, NameToOids>;
+
+pub struct Index {
+    pub oid_to_document: OidToDocument,
+    pub lang_and_name_to_oids: LangAndNameToOids,
+}
 
 pub fn get_identifiers_near_cursor(
     bundled_parser: BundledParser,
@@ -69,4 +84,65 @@ pub fn get_identifiers_near_cursor(
     }
 
     Ok(identifiers)
+}
+
+pub fn symbol_snippets_from_identifier(
+    repo: &Repository,
+    index: &Index,
+    identifier: String,
+
+    depth: u8,
+    max_depth: u8,
+) -> Result<Vec<SymbolContextSnippet>, ()> {
+    let mut snippets = vec![];
+
+    if depth >= max_depth {
+        return Ok(snippets);
+    }
+
+    let oids = match index
+        .lang_and_name_to_oids
+        .get(&BundledParser::Typescript)
+        .expect("no lang bundle")
+        .get(&identifier)
+    {
+        Some(identifier) => identifier,
+        None => return Ok(snippets),
+    };
+
+    for oid in oids {
+        let document = index.oid_to_document.get(oid).expect("no document");
+        for occu in &document.occurrences {
+            let data = &repo.find_object(*oid).expect("no oid").data;
+            let source = if let Ok(source) = data.to_str() {
+                source
+            } else {
+                continue;
+            };
+
+            if scip::symbol::parse_symbol(occu.symbol.as_str())
+                .unwrap()
+                .descriptors
+                .last()
+                .unwrap()
+                .name
+                == identifier
+            {
+                if occu.enclosing_range.len() != 0 {
+                    let range = PackedRange::from_vec(&occu.enclosing_range)
+                        .expect("no vec range")
+                        .to_range(&source)
+                        .expect("No range");
+
+                    snippets.push(SymbolContextSnippet {
+                        file_name: document.relative_path.clone(),
+                        symbol: occu.symbol.clone(),
+                        content: source[range].to_string(),
+                    })
+                }
+            }
+        }
+    }
+
+    Ok(snippets)
 }

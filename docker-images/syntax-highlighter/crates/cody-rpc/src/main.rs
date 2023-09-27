@@ -16,8 +16,6 @@ use tabled::{Table, Tabled};
 use lsp_server::{Connection, ExtractError, Message, Notification, Request, RequestId, Response};
 use serde::{Deserialize, Serialize};
 
-use crate::types::{ContextAtPositionResponse, InitializeResponse, SymbolContextSnippet};
-
 mod context;
 mod types;
 
@@ -49,7 +47,7 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                     "bfg/initialize" => {
                         match types::cast_request::<types::Initialize>(req) {
                             Ok((id, params)) => {
-                                let result = Some(InitializeResponse {
+                                let result = Some(types::InitializeResponse {
                                     server_version: "pogchamp".to_string(),
                                 });
                                 let result = serde_json::to_value(&result).unwrap();
@@ -78,7 +76,7 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                                     }
                                 };
 
-                                let mut symbols = vec![];
+                                let mut symbol_snippets = vec![];
                                 let identifiers = context::get_identifiers_near_cursor(
                                     BundledParser::Typescript,
                                     params.content,
@@ -87,57 +85,16 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                                 .expect("bruh");
 
                                 for identifier in identifiers {
-                                    let oids = match index
-                                        .lang_and_name_to_oids
-                                        .get(&BundledParser::Typescript)
-                                        .expect("no lang bundle")
-                                        .get(&identifier)
-                                    {
-                                        Some(identifier) => identifier,
-                                        None => continue,
-                                    };
-
-                                    for oid in oids {
-                                        let document =
-                                            index.oid_to_document.get(oid).expect("no document");
-                                        for occu in &document.occurrences {
-                                            let data =
-                                                &repo.find_object(*oid).expect("no oid").data;
-                                            let source = if let Ok(str) = data.to_str() {
-                                                str
-                                            } else {
-                                                continue;
-                                            };
-
-                                            if scip::symbol::parse_symbol(occu.symbol.as_str())
-                                                .unwrap()
-                                                .descriptors
-                                                .last()
-                                                .unwrap()
-                                                .name
-                                                == identifier
-                                            {
-                                                if occu.enclosing_range.len() != 0 {
-                                                    let range = PackedRange::from_vec(
-                                                        &occu.enclosing_range,
-                                                    )
-                                                    .expect("no vec range")
-                                                    .to_range(&source)
-                                                    .expect("No range");
-
-                                                    symbols.push(SymbolContextSnippet {
-                                                        file_name: document.relative_path.clone(),
-                                                        symbol: occu.symbol.clone(),
-                                                        content: source[range].to_string(),
-                                                    })
-                                                }
-                                            }
-                                        }
-                                    }
+                                    symbol_snippets.append(
+                                        &mut context::symbol_snippets_from_identifier(
+                                            &repo, index, identifier, 0, 4,
+                                        )
+                                        .unwrap(),
+                                    )
                                 }
 
-                                let result = Some(ContextAtPositionResponse {
-                                    symbols,
+                                let result = Some(types::ContextAtPositionResponse {
+                                    symbols: symbol_snippets,
                                     files: vec![],
                                 });
                                 let result = serde_json::to_value(&result).unwrap();
@@ -196,7 +153,7 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
     Ok(())
 }
 
-type RepoIndices = HashMap<PathBuf, Index>;
+type RepoIndices = HashMap<PathBuf, context::Index>;
 
 fn foo() {
     let repo = gix::open("/Users/auguste.rame/Documents/Repos/sourcegraph/.git").expect("bruh");
@@ -238,22 +195,11 @@ struct LangStats {
 
 type StatsMap = HashMap<BundledParser, LangStats>;
 
-type Oid = [u8; 20];
-type OidToDocument = HashMap<Oid, Document>;
-type OidSet = HashSet<Oid>;
-type NameToOids = HashMap<String, OidSet>;
-type LangAndNameToOids = HashMap<BundledParser, NameToOids>;
-
-struct Index {
-    oid_to_document: OidToDocument,
-    lang_and_name_to_oids: LangAndNameToOids,
-}
-
-fn index_repo<'a>(repo: &Repository) -> Result<(StatsMap, Index), ()> {
+fn index_repo<'a>(repo: &Repository) -> Result<(StatsMap, context::Index), ()> {
     let mut map = StatsMap::new();
-    let mut index = Index {
-        oid_to_document: OidToDocument::new(),
-        lang_and_name_to_oids: LangAndNameToOids::new(),
+    let mut index = context::Index {
+        oid_to_document: context::OidToDocument::new(),
+        lang_and_name_to_oids: context::LangAndNameToOids::new(),
     };
 
     let tree = repo
@@ -318,7 +264,7 @@ fn index_repo<'a>(repo: &Repository) -> Result<(StatsMap, Index), ()> {
             let entry = index
                 .lang_and_name_to_oids
                 .entry(bundled_parser.clone())
-                .or_insert(NameToOids::new());
+                .or_insert(context::NameToOids::new());
 
             for occu in &document.occurrences {
                 let symbol = match scip::symbol::parse_symbol(occu.symbol.as_str()) {
@@ -335,7 +281,7 @@ fn index_repo<'a>(repo: &Repository) -> Result<(StatsMap, Index), ()> {
                             .name
                             .clone(),
                     )
-                    .or_insert(OidSet::new());
+                    .or_insert(context::OidSet::new());
                 entry.insert(oid);
             }
 
