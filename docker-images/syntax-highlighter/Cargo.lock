@@ -423,7 +423,9 @@ dependencies = [
  "cast",
  "gix",
  "lsp-server",
+ "lsp-types",
  "scip",
+ "scip-macros",
  "scip-syntax",
  "scip-treesitter",
  "scip-treesitter-languages",
@@ -433,6 +435,7 @@ dependencies = [
  "tokio",
  "tower-lsp",
  "tree-sitter",
+ "url",
 ]
 
 [[package]]

@@ -1,38 +1,40 @@
-use serde_json::json;
 use std::{
     collections::{HashMap, HashSet},
-    path::Path,
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
 use gix::{bstr::ByteSlice, objs::tree::EntryMode, traverse::tree::Recorder, Repository};
-use scip::types::{Document, Symbol};
+use scip::types::Document;
 use scip_syntax::{globals::parse_tree, languages::get_tag_configuration};
+use scip_treesitter::types::PackedRange;
 use scip_treesitter_languages::parsers::BundledParser;
-use tabled::{Table, Tabled};
-use tower_lsp::{jsonrpc, LanguageServer, lsp_types, LspService};
-use tower_lsp::lsp_types::{InitializeParams, InitializeResult};
 use std::error::Error;
+use tabled::{Table, Tabled};
 // use lsp_types::{ClientCapabilities, InitializeParams, ServerCapabilities};
 
-use lsp_server::{Connection, ExtractError, Message, Request, RequestId, Response};
+use lsp_server::{Connection, ExtractError, Message, Notification, Request, RequestId, Response};
 use serde::{Deserialize, Serialize};
 
+use crate::types::{ContextAtPositionResponse, SymbolContextSnippet};
+
+mod context;
+mod types;
+
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
-   // Create the transport. Includes the stdio (stdin and stdout) versions but this could
-   // also be implemented to use sockets or HTTP.
-   let (connection, io_threads) = Connection::stdio();
+    let (connection, io_threads) = Connection::stdio();
 
     main_loop(connection)?;
 
     eprintln!("shutting down server");
-   Ok(())
+    Ok(())
 }
 
-fn main_loop(
-    connection: Connection,
-) -> Result<(), Box<dyn Error + Sync + Send>> {
+fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>> {
     eprintln!("starting example main loop");
+
+    let mut indices = RepoIndices::new();
+
     for msg in &connection.receiver {
         eprintln!("got msg: {msg:?}");
         match msg {
@@ -42,65 +44,107 @@ fn main_loop(
                 }
                 eprintln!("got request: {req:?}");
 
-                match cast::<CodyDefinition>(req) {
+                match types::cast_request::<types::ContextAtPosition>(req) {
                     Ok((id, params)) => {
-                        eprintln!("got cody/definition request #{id}: {params:?}");
-                        let result = Some(CodyDefinitionResponse{pong: params.ping});
+                        let git_dir = url::Url::parse(&params.uri)
+                            .expect("bruh")
+                            .to_file_path()
+                            .expect("bruh");
+
+                        let repo = gix::open(&git_dir).expect("bruh");
+                        let index = match indices.get(&git_dir) {
+                            Some(index) => index,
+                            None => break,
+                        };
+
+                        let mut symbols = vec![];
+                        let content_symbols_names = context::get_symbols(
+                            BundledParser::Typescript,
+                            params.content,
+                            params.position,
+                        )
+                        .expect("bruh");
+
+                        for symbol in content_symbols_names {
+                            let oids = index
+                                .lang_and_name_to_oids
+                                .get(&BundledParser::Typescript)
+                                .unwrap()
+                                .get(&symbol)
+                                .unwrap();
+
+                            for oid in oids {
+                                let document = index.oid_to_document.get(oid).unwrap();
+                                for occu in &document.occurrences {
+                                    let data = &repo.find_object(*oid).unwrap().data;
+                                    let source = if let Ok(str) = data.to_str() {
+                                        str
+                                    } else {
+                                        continue;
+                                    };
+
+                                    if occu.enclosing_range.len() != 0 {
+                                        let range = PackedRange::from_vec(&occu.enclosing_range)
+                                            .unwrap()
+                                            .to_range(&source)
+                                            .expect("No range");
+
+                                        symbols.push(SymbolContextSnippet {
+                                            file_name: document.relative_path.clone(),
+                                            symbol: occu.symbol.clone(),
+                                            content: source[range].to_string(),
+                                        })
+                                    }
+                                }
+                            }
+                        }
+
+                        let result = Some(ContextAtPositionResponse {
+                            symbols,
+                            files: vec![],
+                        });
                         let result = serde_json::to_value(&result).unwrap();
-                        let resp = Response { id, result: Some(result), error: None };
+                        let resp = Response {
+                            id,
+                            result: Some(result),
+                            error: None,
+                        };
                         connection.sender.send(Message::Response(resp))?;
                         continue;
                     }
                     Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
                     Err(ExtractError::MethodMismatch(req)) => req,
                 };
-                // ...
             }
             Message::Response(resp) => {
                 eprintln!("got response: {resp:?}");
             }
             Message::Notification(not) => {
                 eprintln!("got notification: {not:?}");
+
+                match types::cast_notification::<types::GitRevisionDidChange>(not) {
+                    Ok(params) => {
+                        let git_dir = url::Url::parse(&params.git_directory_uri)
+                            .expect("bruh")
+                            .to_file_path()
+                            .expect("bruh");
+
+                        let repo = gix::open(&git_dir).expect("bruh");
+                        let (_, index) = index_repo(&repo).expect("not to fail");
+
+                        indices.insert(git_dir, index);
+                        continue;
+                    }
+                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+                    Err(ExtractError::MethodMismatch(req)) => req,
+                };
             }
         }
     }
     Ok(())
 }
 
-fn cast<R>(req: Request) -> Result<(RequestId, R::Params), ExtractError<Request>>
-    where
-        R: lsp_types::request::Request,
-        R::Params: serde::de::DeserializeOwned,
-{
-    req.extract(R::METHOD)
-}
-
-
-#[derive(Debug, Eq, PartialEq, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodyDefinitionParams {
-    // #[serde(flatten)]
-    pub ping: String,
-
-}
-
-#[derive(Debug, Eq, PartialEq, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodyDefinitionResponse {
-    // #[serde(flatten)]
-    pub pong: String,
-
-}
-
-#[derive(Debug)]
-pub enum CodyDefinition {}
-
-impl lsp_types::request::Request for CodyDefinition {
-    type Params = CodyDefinitionParams;
-    type Result = Option<CodyDefinitionResponse>;
-    const METHOD: &'static str = "cody/definition";
-}
-
+type RepoIndices = HashMap<PathBuf, Index>;
 
 fn foo() {
     let repo = gix::open("/Users/auguste.rame/Documents/Repos/sourcegraph/.git").expect("bruh");
@@ -311,8 +355,8 @@ mod test {
 
     #[test]
     fn test_typescript() {
-        let repo_path = Path::new("testdata/typescript");
-        let repo = load_repo(&repo_path);
+        let git_dir = Path::new("testdata/typescript");
+        let repo = load_repo(&git_dir);
         let (stats, index) = index_repo(&repo).expect("not to fail");
 
         let oids = index
@@ -342,6 +386,6 @@ mod test {
             }
         }
 
-        delete_git(repo_path);
+        delete_git(git_dir);
     }
 }
