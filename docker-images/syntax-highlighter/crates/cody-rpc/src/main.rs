@@ -16,7 +16,7 @@ use tabled::{Table, Tabled};
 use lsp_server::{Connection, ExtractError, Message, Notification, Request, RequestId, Response};
 use serde::{Deserialize, Serialize};
 
-use crate::types::{ContextAtPositionResponse, SymbolContextSnippet};
+use crate::types::{ContextAtPositionResponse, InitializeResponse, SymbolContextSnippet};
 
 mod context;
 mod types;
@@ -47,7 +47,19 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                 match req.method.as_str() {
                     "bfg/initialize" => {
                         match types::cast_request::<types::Initialize>(req) {
-                            Ok((id, params)) => {}
+                            Ok((id, params)) => {
+                                let result = Some(InitializeResponse {
+                                    server_version: "pogchamp".to_string(),
+                                });
+                                let result = serde_json::to_value(&result).unwrap();
+                                let resp = Response {
+                                    id,
+                                    result: Some(result),
+                                    error: None,
+                                };
+                                connection.sender.send(Message::Response(resp))?;
+                                continue;
+                            }
                             Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
                             Err(ExtractError::MethodMismatch(req)) => panic!("bruh"),
                         };
