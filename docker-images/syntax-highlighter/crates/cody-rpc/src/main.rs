@@ -44,77 +44,90 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                 }
                 eprintln!("got request: {req:?}");
 
-                match types::cast_request::<types::ContextAtPosition>(req) {
-                    Ok((id, params)) => {
-                        let git_dir = url::Url::parse(&params.uri)
-                            .expect("bruh")
-                            .to_file_path()
-                            .expect("bruh");
-
-                        let repo = gix::open(&git_dir).expect("bruh");
-                        let index = match indices.get(&git_dir) {
-                            Some(index) => index,
-                            None => break,
+                match req.method.as_str() {
+                    "bfg/initialize" => {
+                        match types::cast_request::<types::Initialize>(req) {
+                            Ok((id, params)) => {}
+                            Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+                            Err(ExtractError::MethodMismatch(req)) => panic!("bruh"),
                         };
+                    }
+                    "bfg/contextAtPosition" => {
+                        match types::cast_request::<types::ContextAtPosition>(req) {
+                            Ok((id, params)) => {
+                                let git_dir = url::Url::parse(&params.uri)
+                                    .expect("bruh")
+                                    .to_file_path()
+                                    .expect("bruh");
 
-                        let mut symbols = vec![];
-                        let content_symbols_names = context::get_symbols(
-                            BundledParser::Typescript,
-                            params.content,
-                            params.position,
-                        )
-                        .expect("bruh");
+                                let repo = gix::open(&git_dir).expect("bruh");
+                                let index = match indices.get(&git_dir) {
+                                    Some(index) => index,
+                                    None => break,
+                                };
 
-                        for symbol in content_symbols_names {
-                            let oids = index
-                                .lang_and_name_to_oids
-                                .get(&BundledParser::Typescript)
-                                .unwrap()
-                                .get(&symbol)
-                                .unwrap();
+                                let mut symbols = vec![];
+                                let content_symbols_names = context::get_symbols(
+                                    BundledParser::Typescript,
+                                    params.content,
+                                    params.position,
+                                )
+                                .expect("bruh");
 
-                            for oid in oids {
-                                let document = index.oid_to_document.get(oid).unwrap();
-                                for occu in &document.occurrences {
-                                    let data = &repo.find_object(*oid).unwrap().data;
-                                    let source = if let Ok(str) = data.to_str() {
-                                        str
-                                    } else {
-                                        continue;
-                                    };
+                                for symbol in content_symbols_names {
+                                    let oids = index
+                                        .lang_and_name_to_oids
+                                        .get(&BundledParser::Typescript)
+                                        .unwrap()
+                                        .get(&symbol)
+                                        .unwrap();
 
-                                    if occu.enclosing_range.len() != 0 {
-                                        let range = PackedRange::from_vec(&occu.enclosing_range)
-                                            .unwrap()
-                                            .to_range(&source)
-                                            .expect("No range");
+                                    for oid in oids {
+                                        let document = index.oid_to_document.get(oid).unwrap();
+                                        for occu in &document.occurrences {
+                                            let data = &repo.find_object(*oid).unwrap().data;
+                                            let source = if let Ok(str) = data.to_str() {
+                                                str
+                                            } else {
+                                                continue;
+                                            };
 
-                                        symbols.push(SymbolContextSnippet {
-                                            file_name: document.relative_path.clone(),
-                                            symbol: occu.symbol.clone(),
-                                            content: source[range].to_string(),
-                                        })
+                                            if occu.enclosing_range.len() != 0 {
+                                                let range =
+                                                    PackedRange::from_vec(&occu.enclosing_range)
+                                                        .unwrap()
+                                                        .to_range(&source)
+                                                        .expect("No range");
+
+                                                symbols.push(SymbolContextSnippet {
+                                                    file_name: document.relative_path.clone(),
+                                                    symbol: occu.symbol.clone(),
+                                                    content: source[range].to_string(),
+                                                })
+                                            }
+                                        }
                                     }
                                 }
-                            }
-                        }
 
-                        let result = Some(ContextAtPositionResponse {
-                            symbols,
-                            files: vec![],
-                        });
-                        let result = serde_json::to_value(&result).unwrap();
-                        let resp = Response {
-                            id,
-                            result: Some(result),
-                            error: None,
+                                let result = Some(ContextAtPositionResponse {
+                                    symbols,
+                                    files: vec![],
+                                });
+                                let result = serde_json::to_value(&result).unwrap();
+                                let resp = Response {
+                                    id,
+                                    result: Some(result),
+                                    error: None,
+                                };
+                                connection.sender.send(Message::Response(resp))?;
+                                continue;
+                            }
+                            Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+                            Err(ExtractError::MethodMismatch(req)) => panic!("bruh"),
                         };
-                        connection.sender.send(Message::Response(resp))?;
-                        continue;
                     }
-                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
-                    Err(ExtractError::MethodMismatch(req)) => req,
-                };
+                    &_ => {}
+                }
             }
             Message::Response(resp) => {
                 eprintln!("got response: {resp:?}");
