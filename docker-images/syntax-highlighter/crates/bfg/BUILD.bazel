@@ -1,0 +1,29 @@
+load("@crate_index//:defs.bzl", "aliases", "all_crate_deps")
+load("@rules_rust//rust:defs.bzl", "rust_binary")
+
+rust_binary(
+    name = "bfg",
+    srcs = glob(
+        ["src/**"],
+        allow_empty = False,
+    ),
+    aliases = aliases(),
+    compile_data = glob(
+        ["queries/**"],
+        allow_empty = False,
+    ),
+    proc_macro_deps = all_crate_deps(
+        proc_macro = True,
+    ) + [
+        "//docker-images/syntax-highlighter/crates/scip-macros:scip-macros",
+    ],
+    visibility = ["//visibility:public"],
+    deps = all_crate_deps(
+        normal = True,
+    ) + [
+        "//docker-images/syntax-highlighter/crates/lsp-server",
+        "//docker-images/syntax-highlighter/crates/scip-syntax",
+        "//docker-images/syntax-highlighter/crates/scip-treesitter",
+        "//docker-images/syntax-highlighter/crates/scip-treesitter-languages",
+    ],
+)

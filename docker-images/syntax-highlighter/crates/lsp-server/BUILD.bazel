@@ -1,0 +1,15 @@
+load("@crate_index//:defs.bzl", "aliases", "all_crate_deps")
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+rust_library(
+    name = "lsp-server",
+    srcs = glob(["src/*.rs"]),
+    aliases = aliases(),
+    proc_macro_deps = all_crate_deps(
+        proc_macro = True,
+    ),
+    visibility = ["//docker-images/syntax-highlighter:__subpackages__"],
+    deps = all_crate_deps(
+        normal = True,
+    ),
+)
