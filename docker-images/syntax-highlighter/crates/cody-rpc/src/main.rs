@@ -4,8 +4,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+use context::{DocumentContext, OidToDocumentContext, SymbolToSymbolInformation};
 use gix::{bstr::ByteSlice, objs::tree::EntryMode, traverse::tree::Recorder, Repository};
-use scip::types::Document;
+use scip::types::{descriptor::Suffix, Descriptor, Document};
 use scip_syntax::{globals::parse_tree, languages::get_tag_configuration};
 use scip_treesitter::types::PackedRange;
 use scip_treesitter_languages::parsers::BundledParser;
@@ -213,7 +214,7 @@ type StatsMap = HashMap<BundledParser, LangStats>;
 fn index_repo<'a>(repo: &Repository) -> Result<(StatsMap, context::Index), ()> {
     let mut map = StatsMap::new();
     let mut index = context::Index {
-        oid_to_document: context::OidToDocument::new(),
+        oid_to_document_context: context::OidToDocumentContext::new(),
         lang_and_name_to_oids: context::LangAndNameToOids::new(),
     };
 
@@ -231,7 +232,10 @@ fn index_repo<'a>(repo: &Repository) -> Result<(StatsMap, context::Index), ()> {
 
     for record in recorder.records {
         if record.mode == EntryMode::Blob {
-            // if a.filepath.ends_with(".ts".as_bytes()) {
+            if !record.filepath.ends_with(".ts".as_bytes()) {
+                continue;
+            }
+
             let now = Instant::now();
             let bundled_parser = if let Some(parser) = BundledParser::get_parser_from_extension(
                 if let Ok(path) = record.filepath.to_str() {
@@ -275,11 +279,16 @@ fn index_repo<'a>(repo: &Repository) -> Result<(StatsMap, context::Index), ()> {
 
             let gix::ObjectId::Sha1(oid) = record.oid;
             let document = scope.into_document(hint, vec![]);
+            let mut symbol_to_symbol_information = SymbolToSymbolInformation::new();
 
             let entry = index
                 .lang_and_name_to_oids
                 .entry(bundled_parser.clone())
                 .or_insert(context::NameToOids::new());
+
+            for (i, symbol) in document.symbols.iter().enumerate() {
+                symbol_to_symbol_information.insert(symbol.symbol.clone(), i as u32);
+            }
 
             for occu in &document.occurrences {
                 let symbol = match scip::symbol::parse_symbol(occu.symbol.as_str()) {
@@ -300,7 +309,13 @@ fn index_repo<'a>(repo: &Repository) -> Result<(StatsMap, context::Index), ()> {
                 entry.insert(oid);
             }
 
-            index.oid_to_document.insert(oid, document);
+            index.oid_to_document_context.insert(
+                oid,
+                DocumentContext {
+                    document,
+                    symbol_to_symbol_information,
+                },
+            );
 
             let nanos = now.elapsed().as_nanos();
             let entry = map.entry(bundled_parser.clone()).or_insert(LangStats {
@@ -380,7 +395,13 @@ mod test {
             .unwrap();
 
         for oid in oids {
-            for occu in &index.oid_to_document.get(oid).unwrap().occurrences {
+            for occu in &index
+                .oid_to_document_context
+                .get(oid)
+                .unwrap()
+                .document
+                .occurrences
+            {
                 let data = &repo.find_object(*oid).unwrap().data;
                 let source = if let Ok(str) = data.to_str() {
                     str

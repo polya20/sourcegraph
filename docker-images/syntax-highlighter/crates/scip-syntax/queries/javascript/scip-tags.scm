@@ -5,7 +5,12 @@
 
 ;; Function / Generator declaration.
 ;;   Don't think there is any reason to expose anything from within the body of the functions
-(function_declaration (identifier) @descriptor.method body: (_) @local) @enclosing
+(function_declaration
+  name: (_) @signature @descriptor.method
+  parameters: (_) @signature
+  body: (_) @local
+) @enclosing
+
 (generator_function_declaration  (identifier) @descriptor.method body: (_) @local) @enclosing
 
 (lexical_declaration (variable_declarator name: (identifier) @descriptor.term)) @scope

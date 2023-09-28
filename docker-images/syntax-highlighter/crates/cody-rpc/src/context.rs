@@ -10,13 +10,19 @@ use scip_treesitter_languages::parsers::BundledParser;
 use crate::types::{self, SymbolContextSnippet};
 
 pub type Oid = [u8; 20];
-pub type OidToDocument = HashMap<Oid, Document>;
+pub type OidToDocumentContext = HashMap<Oid, DocumentContext>;
 pub type OidSet = HashSet<Oid>;
 pub type NameToOids = HashMap<String, OidSet>;
 pub type LangAndNameToOids = HashMap<BundledParser, NameToOids>;
+pub type SymbolToSymbolInformation = HashMap<String, u32>;
+
+pub struct DocumentContext {
+    pub document: Document,
+    pub symbol_to_symbol_information: SymbolToSymbolInformation,
+}
 
 pub struct Index {
-    pub oid_to_document: OidToDocument,
+    pub oid_to_document_context: OidToDocumentContext,
     pub lang_and_name_to_oids: LangAndNameToOids,
 }
 
@@ -86,8 +92,8 @@ pub fn symbol_snippets_near_cursor(
                 &repo,
                 index,
                 identifier.utf8_text(source_bytes).unwrap().to_string(),
-                0,
-                4,
+                depth,
+                max_depth,
             )?,
             None => {}
         }
@@ -121,7 +127,9 @@ pub fn symbol_snippets_from_identifier(
     };
 
     for oid in oids {
-        let document = index.oid_to_document.get(oid).expect("no document");
+        let doc_context = index.oid_to_document_context.get(oid).expect("no document");
+        let document = &doc_context.document;
+
         for occu in &document.occurrences {
             let data = &repo.find_object(*oid).expect("no oid").data;
             let source = if let Ok(source) = data.to_str() {
@@ -139,15 +147,36 @@ pub fn symbol_snippets_from_identifier(
                 == identifier
             {
                 if occu.enclosing_range.len() != 0 {
-                    let range = PackedRange::from_vec(&occu.enclosing_range)
-                        .expect("no vec range")
-                        .to_range(&source)
-                        .expect("No range");
+                    let sig_doc = match doc_context.symbol_to_symbol_information.get(&occu.symbol) {
+                        Some(si_index) => {
+                            let si = &document.symbols[*si_index as usize];
+                            eprintln!("{:?}", si);
+
+                            let sig_doc = si.signature_documentation.as_ref();
+                            match sig_doc {
+                                Some(sig_doc) => Some(&sig_doc.text),
+                                None => None,
+                            }
+                        }
+                        None => None,
+                    };
+
+                    let content = match sig_doc {
+                        Some(content) => content.clone(),
+                        None => {
+                            let range = PackedRange::from_vec(&occu.enclosing_range)
+                                .expect("no vec range")
+                                .to_range(&source)
+                                .expect("No range");
+
+                            source[range].to_string()
+                        }
+                    };
 
                     snippets.insert(SymbolContextSnippet {
                         file_name: document.relative_path.clone(),
                         symbol: occu.symbol.clone(),
-                        content: source[range].to_string(),
+                        content,
                     });
 
                     find_related_symbol_snippets(
@@ -222,7 +251,6 @@ pub fn find_related_symbol_snippets(
                     == identifier_range
                 {
                     for related in related {
-                        eprint!("{}", related.utf8_text(source_bytes).unwrap().to_string());
                         symbol_snippets_from_identifier(
                             snippets,
                             repo,

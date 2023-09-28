@@ -15,6 +15,7 @@ pub struct Scope {
     pub children: Vec<Scope>,
     pub descriptors: Vec<Descriptor>,
     pub kind: symbol_information::Kind,
+    pub signature: Option<String>,
 }
 
 #[derive(Debug)]
@@ -23,6 +24,7 @@ pub struct Global {
     pub enclosing: Option<PackedRange>,
     pub descriptors: Vec<Descriptor>,
     pub kind: symbol_information::Kind,
+    pub signature: Option<String>,
 }
 
 impl Scope {
@@ -104,6 +106,14 @@ impl Scope {
             symbols.push(SymbolInformation {
                 symbol,
                 kind: self.kind.into(),
+                signature_documentation: match &self.signature {
+                    Some(text) => Some(Document {
+                        text: text.clone(),
+                        ..Default::default()
+                    }),
+                    None => None,
+                }
+                .into(),
                 ..Default::default()
             })
         }
@@ -134,6 +144,14 @@ impl Scope {
             symbols.push(SymbolInformation {
                 symbol,
                 kind: global.kind.into(),
+                signature_documentation: match &global.signature {
+                    Some(text) => Some(Document {
+                        text: text.clone(),
+                        ..Default::default()
+                    }),
+                    None => None,
+                }
+                .into(),
                 ..Default::default()
             });
         }
@@ -175,6 +193,7 @@ pub fn parse_tree<'a>(
         let mut local_range = None;
         let mut descriptors = vec![];
         let mut kind = None;
+        let mut signature = String::new();
 
         for capture in m.captures {
             let capture_name = capture_names
@@ -203,6 +222,10 @@ pub fn parse_tree<'a>(
             if capture_name.starts_with("kind") {
                 assert!(kind.is_none(), "declare only one kind per match");
                 kind = Some(capture_name)
+            }
+
+            if capture_name.starts_with("signature") {
+                signature.push_str(capture.node.utf8_text(source_bytes)?);
             }
         }
 
@@ -240,6 +263,11 @@ pub fn parse_tree<'a>(
                         enclosing: enclosing_node.map(|n| n.into()),
                         descriptors,
                         kind,
+                        signature: if signature.len() > 0 {
+                            Some(signature)
+                        } else {
+                            None
+                        },
                     }),
                     None => {
                         let (last, rest) = match descriptors.split_last() {
@@ -262,6 +290,11 @@ pub fn parse_tree<'a>(
                                             descriptors
                                         },
                                         kind,
+                                        signature: if signature.len() > 0 {
+                                            Some(signature.clone())
+                                        } else {
+                                            None
+                                        },
                                     });
                                 }
                             }
@@ -270,6 +303,11 @@ pub fn parse_tree<'a>(
                                 enclosing: enclosing_node.map(|n| n.into()),
                                 descriptors,
                                 kind,
+                                signature: if signature.len() > 0 {
+                                    Some(signature)
+                                } else {
+                                    None
+                                },
                             }),
                         }
                     }
@@ -295,6 +333,7 @@ pub fn parse_tree<'a>(
         children: vec![],
         descriptors: vec![],
         kind: symbol_information::Kind::UnspecifiedKind,
+        signature: None,
     };
 
     scopes.sort_by_key(|m| {
