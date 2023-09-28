@@ -14,7 +14,6 @@ scip-syntax = { path = "../scip-syntax" }
 scip-treesitter = { path = "../scip-treesitter" }
 scip-macros = { path = "../scip-macros" }
 scip-treesitter-languages = { path = "../scip-treesitter-languages" }
-tabled = "0.14.0"
 tower-lsp = "0.20.0"
 serde_json.workspace = true
 tokio = { version = "1.0.0", features = ["rt", "rt-multi-thread", "macros"] }

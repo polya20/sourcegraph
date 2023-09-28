@@ -1,28 +1,22 @@
 use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
-    time::{Duration, Instant},
 };
 
-use context::{DocumentContext, OidToDocumentContext, SymbolToSymbolInformation};
+use context::{DocumentContext, SymbolToSymbolInformation};
 use gix::{bstr::ByteSlice, objs::tree::EntryMode, traverse::tree::Recorder, Repository};
-use scip::types::{descriptor::Suffix, Descriptor, Document};
 use scip_syntax::{globals::parse_tree, languages::get_tag_configuration};
-use scip_treesitter::types::PackedRange;
 use scip_treesitter_languages::parsers::BundledParser;
 use std::error::Error;
-use tabled::{Table, Tabled};
-// use lsp_types::{ClientCapabilities, InitializeParams, ServerCapabilities};
 
 use crate::types::SymbolContextSnippet;
-use lsp_server::{Connection, ExtractError, Message, Notification, Request, RequestId, Response};
-use serde::{Deserialize, Serialize};
+use lsp_server::{Connection, ExtractError, Message, Response};
 
 mod context;
 mod types;
 
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
-    let (connection, io_threads) = Connection::stdio();
+    let (connection, _) = Connection::stdio();
 
     main_loop(connection)?;
 
@@ -48,9 +42,9 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                 match req.method.as_str() {
                     "bfg/initialize" => {
                         match types::cast_request::<types::Initialize>(req) {
-                            Ok((id, params)) => {
+                            Ok((id, _)) => {
                                 let result = Some(types::InitializeResponse {
-                                    server_version: "pogchamp".to_string(),
+                                    server_version: env!("CARGO_PKG_VERSION").to_string(),
                                 });
                                 let result = serde_json::to_value(&result).unwrap();
                                 let resp = Response {
@@ -62,7 +56,7 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                                 continue;
                             }
                             Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
-                            Err(ExtractError::MethodMismatch(req)) => panic!("bruh"),
+                            Err(ExtractError::MethodMismatch(_)) => panic!("bruh"),
                         };
                     }
                     "bfg/contextAtPosition" => {
@@ -123,7 +117,7 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                                 continue;
                             }
                             Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
-                            Err(ExtractError::MethodMismatch(req)) => panic!("bruh"),
+                            Err(ExtractError::MethodMismatch(_)) => panic!("bruh"),
                         };
                     }
                     "bfg/gitRevision/didChange" => {
@@ -135,7 +129,7 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
                                     .expect("bruh");
 
                                 let repo = gix::open(&new_git_dir).expect("bruh");
-                                let (_, index) = index_repo(&repo).expect("not to fail");
+                                let index = index_repo(&repo).expect("not to fail");
 
                                 indices.insert(new_git_dir.to_path_buf(), index);
 
@@ -171,48 +165,7 @@ fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>>
 
 type RepoIndices = HashMap<PathBuf, context::Index>;
 
-fn foo() {
-    let repo = gix::open("/Users/auguste.rame/Documents/Repos/sourcegraph/.git").expect("bruh");
-    let (n, lang_map) = index_repo(&repo).expect("not to fail");
-
-    let mut entries = vec![];
-
-    for (k, v) in &n {
-        let secs = Duration::from_nanos(v.nanos as u64).as_secs_f64();
-
-        entries.push(TableEntry {
-            language: k.get_language_name().to_string(),
-            symbols: v.symbols,
-            lines: v.lines,
-            symbols_per_second: ((v.symbols as f64) / (secs)) as usize,
-            lines_per_second: ((v.lines as f64) / (secs)) as usize,
-        });
-    }
-
-    println!("{}", Table::new(entries).to_string());
-}
-
-#[derive(Tabled)]
-struct TableEntry {
-    language: String,
-    symbols: usize,
-    lines: usize,
-
-    symbols_per_second: usize,
-    lines_per_second: usize,
-}
-
-#[derive(Debug)]
-struct LangStats {
-    symbols: usize,
-    lines: usize,
-    nanos: u128,
-}
-
-type StatsMap = HashMap<BundledParser, LangStats>;
-
-fn index_repo<'a>(repo: &Repository) -> Result<(StatsMap, context::Index), ()> {
-    let mut map = StatsMap::new();
+fn index_repo<'a>(repo: &Repository) -> Result<context::Index, ()> {
     let mut index = context::Index {
         oid_to_document_context: context::OidToDocumentContext::new(),
         lang_and_name_to_oids: context::LangAndNameToOids::new(),
@@ -236,7 +189,6 @@ fn index_repo<'a>(repo: &Repository) -> Result<(StatsMap, context::Index), ()> {
                 continue;
             }
 
-            let now = Instant::now();
             let bundled_parser = if let Some(parser) = BundledParser::get_parser_from_extension(
                 if let Ok(path) = record.filepath.to_str() {
                     Path::new(path)
@@ -316,32 +268,11 @@ fn index_repo<'a>(repo: &Repository) -> Result<(StatsMap, context::Index), ()> {
                     symbol_to_symbol_information,
                 },
             );
-
-            let nanos = now.elapsed().as_nanos();
-            let entry = map.entry(bundled_parser.clone()).or_insert(LangStats {
-                symbols: 0,
-                lines: 0,
-                nanos: 0,
-            });
-            entry.lines += source.lines().count();
-            entry.symbols += scope.into_document(hint, vec![]).occurrences.len();
-            entry.nanos += nanos;
         }
     }
 
-    return Ok((map, index));
+    return Ok(index);
 }
-
-// fn query(oid: lang_map: &LangMap, language: BundledParser) -> Vec<Symbol> {
-//     let symbols = vec![];
-
-//     match lang_map.get(language) {
-//         Some(oid_to_document) => {},
-//         None => return symbols,
-//     }
-
-//     symbols
-// }
 
 #[cfg(test)]
 mod test {
@@ -385,7 +316,7 @@ mod test {
     fn test_typescript() {
         let git_dir = Path::new("testdata/typescript");
         let repo = load_repo(&git_dir);
-        let (stats, index) = index_repo(&repo).expect("not to fail");
+        let index = index_repo(&repo).expect("not to fail");
 
         let oids = index
             .lang_and_name_to_oids

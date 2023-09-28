@@ -1,4 +1,4 @@
-use lsp_server::{ExtractError, Notification, Request, RequestId};
+use lsp_server::{ExtractError, Request, RequestId};
 use serde::{Deserialize, Serialize};
 
 // Requests
@@ -125,10 +125,10 @@ where
     req.extract(R::METHOD)
 }
 
-pub fn cast_notification<N>(not: Notification) -> Result<N::Params, ExtractError<Notification>>
-where
-    N: lsp_types::notification::Notification,
-    N::Params: serde::de::DeserializeOwned,
-{
-    not.extract(N::METHOD)
-}
+// pub fn cast_notification<N>(not: Notification) -> Result<N::Params, ExtractError<Notification>>
+// where
+//     N: lsp_types::notification::Notification,
+//     N::Params: serde::de::DeserializeOwned,
+// {
+//     not.extract(N::METHOD)
+// }
