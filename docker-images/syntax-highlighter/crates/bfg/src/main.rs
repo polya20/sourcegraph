@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use context::{DocumentContext, SymbolToSymbolInformation};
+use context::{DocumentContext, Oid, SymbolToSymbolInformation};
 use gix::{bstr::ByteSlice, objs::tree::EntryMode, traverse::tree::Recorder, Repository};
 use scip_syntax::{globals::parse_tree, languages::get_tag_configuration};
 use scip_treesitter_languages::parsers::BundledParser;
@@ -169,6 +169,7 @@ fn index_repo<'a>(repo: &Repository) -> Result<context::Index, ()> {
     let mut index = context::Index {
         oid_to_document_context: context::OidToDocumentContext::new(),
         lang_and_name_to_oids: context::LangAndNameToOids::new(),
+        oid_to_basename: HashMap::<Oid, String>::new(),
     };
 
     let tree = repo
@@ -230,6 +231,9 @@ fn index_repo<'a>(repo: &Repository) -> Result<context::Index, ()> {
             .expect("a");
 
             let gix::ObjectId::Sha1(oid) = record.oid;
+            index
+                .oid_to_basename
+                .insert(oid, record.filepath.to_string().clone());
             let document = scope.into_document(hint, vec![]);
             let mut symbol_to_symbol_information = SymbolToSymbolInformation::new();
 

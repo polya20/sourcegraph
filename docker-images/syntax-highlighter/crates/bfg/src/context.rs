@@ -24,6 +24,7 @@ pub struct DocumentContext {
 pub struct Index {
     pub oid_to_document_context: OidToDocumentContext,
     pub lang_and_name_to_oids: LangAndNameToOids,
+    pub oid_to_basename: HashMap<Oid, String>,
 }
 
 pub fn symbol_snippets_near_cursor(
@@ -174,7 +175,7 @@ pub fn symbol_snippets_from_identifier(
                     };
 
                     snippets.insert(SymbolContextSnippet {
-                        file_name: document.relative_path.clone(),
+                        file_name: index.oid_to_basename.get(oid).unwrap().to_string(),
                         symbol: occu.symbol.clone(),
                         content,
                     });
