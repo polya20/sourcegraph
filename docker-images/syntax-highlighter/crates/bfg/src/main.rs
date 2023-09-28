@@ -3,14 +3,21 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use anyhow::{anyhow, Result};
 use context::{DocumentContext, Oid, SymbolToSymbolInformation};
 use gix::{bstr::ByteSlice, objs::tree::EntryMode, traverse::tree::Recorder, Repository};
 use scip_syntax::{globals::parse_tree, languages::get_tag_configuration};
 use scip_treesitter_languages::parsers::BundledParser;
 use std::error::Error;
+use types::{
+    ContextAtPositionParams, ContextAtPositionResponse, GitRevisionDidChangeParams,
+    InitializeParams, InitializeResponse,
+};
 
 use crate::types::SymbolContextSnippet;
-use lsp_server::{Connection, ExtractError, Message, Response};
+use lsp_server::{
+    Connection, ErrorCode, ExtractError, Message, RequestId, Response, ResponseError,
+};
 
 mod context;
 mod types;
@@ -24,133 +31,186 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     Ok(())
 }
 
+fn send_result<T: serde::Serialize>(
+    connection: &Connection,
+    id: RequestId,
+    result: T,
+) -> Result<(), Box<dyn Error + Sync + Send>> {
+    let result = Some(result);
+    let result = serde_json::to_value(&result).unwrap();
+    let resp = Response {
+        id,
+        result: Some(result),
+        error: None,
+    };
+    connection.sender.send(Message::Response(resp))?;
+
+    return Ok(());
+}
+
+fn send_error(
+    connection: &Connection,
+    id: RequestId,
+    error: ResponseError,
+) -> Result<(), Box<dyn Error + Sync + Send>> {
+    let resp = Response {
+        id,
+        result: None,
+        error: Some(error),
+    };
+    connection.sender.send(Message::Response(resp))?;
+    return Ok(());
+}
+macro_rules! handle_request {
+    ($request_type: ty, $func: ident, $connection: expr, $request: expr, $context: expr) => {
+        match types::cast_request::<$request_type>($request) {
+            Ok((id, params)) => {
+                match $func($context, params) {
+                    Ok(result) => send_result($connection, id, result)?,
+                    Err(err) => send_error(
+                        $connection,
+                        id,
+                        ResponseError {
+                            code: ErrorCode::InternalError as i32,
+                            message: format!("{}", err),
+                            data: None,
+                        },
+                    )?,
+                }
+                continue;
+            }
+            Err(ExtractError::JsonError {
+                id,
+                method: _,
+                error,
+            }) => {
+                send_error(
+                    $connection,
+                    id.unwrap(),
+                    ResponseError {
+                        code: ErrorCode::InvalidRequest as i32,
+                        message: format!("{}", error),
+                        data: None,
+                    },
+                )?;
+                continue;
+            }
+            Err(ExtractError::MethodMismatch(req)) => req,
+        }
+    };
+}
+
+struct Context {
+    git_dir: Option<PathBuf>,
+    indices: RepoIndices,
+}
+
+fn initialize(_: &mut Context, _: InitializeParams) -> Result<InitializeResponse> {
+    Ok(types::InitializeResponse {
+        server_version: env!("CARGO_PKG_VERSION").to_string(),
+    })
+}
+
+fn context_as_position(
+    context: &mut Context,
+    params: ContextAtPositionParams,
+) -> Result<ContextAtPositionResponse> {
+    let git_dir = match context.git_dir.clone() {
+        Some(dir) => dir,
+        None => {
+            return Ok(types::ContextAtPositionResponse {
+                symbols: vec![],
+                files: vec![],
+            });
+        }
+    };
+
+    let repo = gix::open(&git_dir)?;
+    let index = match context.indices.get(&git_dir) {
+        Some(index) => index,
+        None => {
+            return Err(anyhow!(
+                "repo not found {:?} {:?}",
+                &git_dir,
+                context.indices.keys()
+            ))
+        }
+    };
+
+    let mut symbol_snippets: HashSet<SymbolContextSnippet> = HashSet::new();
+
+    context::symbol_snippets_near_cursor(
+        &mut symbol_snippets,
+        &repo,
+        index,
+        BundledParser::Typescript,
+        params.content,
+        params.position,
+        0,
+        4,
+    )?;
+
+    Ok(types::ContextAtPositionResponse {
+        symbols: symbol_snippets.into_iter().collect(),
+        files: vec![],
+    })
+}
+
+fn git_revision_did_change(
+    context: &mut Context,
+    params: GitRevisionDidChangeParams,
+) -> Result<()> {
+    let new_git_dir = match url::Url::parse(&params.git_directory_uri)?.to_file_path() {
+        Ok(path) => path,
+        Err(()) => return Err(anyhow!("Unknown failure")),
+    };
+
+    let repo = gix::open(&new_git_dir)?;
+    let index = index_repo(&repo).expect("not to fail");
+
+    context.indices.insert(new_git_dir.to_path_buf(), index);
+
+    context.git_dir = Some(new_git_dir);
+
+    Ok(())
+}
+
 fn main_loop(connection: Connection) -> Result<(), Box<dyn Error + Sync + Send>> {
     eprintln!("starting example main loop");
 
-    let mut git_dir: Option<PathBuf> = None;
-    let mut indices = RepoIndices::new();
+    let mut context = Context {
+        git_dir: None,
+        indices: RepoIndices::new(),
+    };
 
     for msg in &connection.receiver {
-        // eprintln!("got msg: {msg:?}");
         match msg {
             Message::Request(req) => {
                 if connection.handle_shutdown(&req)? {
                     return Ok(());
                 }
-                // eprintln!("got request: {req:?}");
 
-                match req.method.as_str() {
-                    "bfg/initialize" => {
-                        match types::cast_request::<types::Initialize>(req) {
-                            Ok((id, _)) => {
-                                let result = Some(types::InitializeResponse {
-                                    server_version: env!("CARGO_PKG_VERSION").to_string(),
-                                });
-                                let result = serde_json::to_value(&result).unwrap();
-                                let resp = Response {
-                                    id,
-                                    result: Some(result),
-                                    error: None,
-                                };
-                                connection.sender.send(Message::Response(resp))?;
-                                continue;
-                            }
-                            Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
-                            Err(ExtractError::MethodMismatch(_)) => panic!("bruh"),
-                        };
-                    }
-                    "bfg/contextAtPosition" => {
-                        match types::cast_request::<types::ContextAtPosition>(req) {
-                            Ok((id, params)) => {
-                                let git_dir = match git_dir.clone() {
-                                    Some(dir) => dir,
-                                    None => {
-                                        let response = Some(types::ContextAtPositionResponse {
-                                            symbols: vec![],
-                                            files: vec![],
-                                        });
-                                        let json_result = serde_json::to_value(&response).unwrap();
-                                        let resp = Response {
-                                            id,
-                                            result: Some(json_result),
-                                            error: None,
-                                        };
-                                        connection.sender.send(Message::Response(resp))?;
-                                        continue;
-                                    }
-                                };
-
-                                let repo = gix::open(&git_dir).expect("bruh");
-                                let index = match indices.get(&git_dir) {
-                                    Some(index) => index,
-                                    None => {
-                                        panic!("repo not found {:?} {:?}", &git_dir, indices.keys())
-                                    }
-                                };
-
-                                let mut symbol_snippets: HashSet<SymbolContextSnippet> =
-                                    HashSet::new();
-
-                                context::symbol_snippets_near_cursor(
-                                    &mut symbol_snippets,
-                                    &repo,
-                                    index,
-                                    BundledParser::Typescript,
-                                    params.content,
-                                    params.position,
-                                    0,
-                                    4,
-                                )
-                                .expect("bruh");
-
-                                let response = Some(types::ContextAtPositionResponse {
-                                    symbols: symbol_snippets.into_iter().collect(),
-                                    files: vec![],
-                                });
-                                let result = serde_json::to_value(&response).unwrap();
-                                let resp = Response {
-                                    id,
-                                    result: Some(result),
-                                    error: None,
-                                };
-                                connection.sender.send(Message::Response(resp))?;
-                                continue;
-                            }
-                            Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
-                            Err(ExtractError::MethodMismatch(_)) => panic!("bruh"),
-                        };
-                    }
-                    "bfg/gitRevision/didChange" => {
-                        match types::cast_request::<types::GitRevisionDidChange>(req) {
-                            Ok((id, params)) => {
-                                let new_git_dir = url::Url::parse(&params.git_directory_uri)
-                                    .expect("bruh")
-                                    .to_file_path()
-                                    .expect("bruh");
-
-                                let repo = gix::open(&new_git_dir).expect("bruh");
-                                let index = index_repo(&repo).expect("not to fail");
-
-                                indices.insert(new_git_dir.to_path_buf(), index);
-
-                                git_dir = Some(new_git_dir);
-
-                                let result = Some(());
-                                let result = serde_json::to_value(&result).unwrap();
-                                let resp = Response {
-                                    id,
-                                    result: Some(result),
-                                    error: None,
-                                };
-                                connection.sender.send(Message::Response(resp))?;
-                                continue;
-                            }
-                            Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
-                            Err(ExtractError::MethodMismatch(req)) => req,
-                        };
-                    }
-                    &_ => {}
-                }
+                let req = handle_request!(
+                    types::Initialize,
+                    initialize,
+                    &connection,
+                    req,
+                    &mut context
+                );
+                let req = handle_request!(
+                    types::ContextAtPosition,
+                    context_as_position,
+                    &connection,
+                    req,
+                    &mut context
+                );
+                handle_request!(
+                    types::GitRevisionDidChange,
+                    git_revision_did_change,
+                    &connection,
+                    req,
+                    &mut context
+                );
             }
             Message::Response(resp) => {
                 eprintln!("got response: {resp:?}");

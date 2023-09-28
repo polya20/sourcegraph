@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use anyhow::{anyhow, Result};
 use gix::bstr::ByteSlice;
 use gix::Repository;
 use scip::types::Document;
@@ -38,22 +39,25 @@ pub fn symbol_snippets_near_cursor(
 
     depth: u8,
     max_depth: u8,
-) -> Result<(), ()> {
+) -> Result<()> {
     let mut parser = tree_sitter::Parser::new();
-    parser
-        .set_language(bundled_parser.get_language())
-        .expect("abc");
+    parser.set_language(bundled_parser.get_language())?;
 
     let query = tree_sitter::Query::new(
-        parser.language().expect("bruh"),
+        match parser.language() {
+            Some(lang) => lang,
+            None => return Err(anyhow!("Invalid tree-sitter language")),
+        },
         include_scip_query!("typescript", "context"),
-    )
-    .expect("bruh");
+    )?;
 
     let capture_names = query.capture_names();
 
     let source_bytes = content.as_bytes();
-    let tree = parser.parse(source_bytes, None).expect("bruh");
+    let tree = match parser.parse(source_bytes, None) {
+        Some(tree) => tree,
+        None => return Err(anyhow!("Failed to parse code")),
+    };
 
     let mut cursor = tree_sitter::QueryCursor::new();
     let cursor_range = PackedRange {
@@ -112,7 +116,7 @@ pub fn symbol_snippets_from_identifier(
 
     depth: u8,
     max_depth: u8,
-) -> Result<(), ()> {
+) -> Result<()> {
     if depth >= max_depth {
         return Ok(());
     }
@@ -207,22 +211,25 @@ pub fn find_related_symbol_snippets(
 
     depth: u8,
     max_depth: u8,
-) -> Result<(), ()> {
+) -> Result<()> {
     let mut parser = tree_sitter::Parser::new();
-    parser
-        .set_language(BundledParser::Typescript.get_language())
-        .expect("abc");
+    parser.set_language(BundledParser::Typescript.get_language())?;
 
     let query = tree_sitter::Query::new(
-        parser.language().expect("bruh"),
+        match parser.language() {
+            Some(lang) => lang,
+            None => return Err(anyhow!("Invalid tree-sitter language")),
+        },
         include_scip_query!("typescript", "context"),
-    )
-    .expect("bruh");
+    )?;
 
     let capture_names = query.capture_names();
 
     let source_bytes = content.as_bytes();
-    let tree = parser.parse(source_bytes, None).expect("bruh");
+    let tree = match parser.parse(source_bytes, None) {
+        Some(tree) => tree,
+        None => return Err(anyhow!("Failed to parse code")),
+    };
 
     let mut cursor = tree_sitter::QueryCursor::new();
 

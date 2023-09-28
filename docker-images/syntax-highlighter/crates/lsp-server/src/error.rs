@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{Notification, Request};
+use crate::{Notification, Request, RequestId};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProtocolError(pub(crate) String);
@@ -18,7 +18,11 @@ pub enum ExtractError<T> {
     /// The extracted message was of a different method than expected.
     MethodMismatch(T),
     /// Failed to deserialize the message.
-    JsonError { method: String, error: serde_json::Error },
+    JsonError {
+        id: Option<RequestId>,
+        method: String,
+        error: serde_json::Error,
+    },
 }
 
 impl std::error::Error for ExtractError<Request> {}
@@ -28,7 +32,11 @@ impl fmt::Display for ExtractError<Request> {
             ExtractError::MethodMismatch(req) => {
                 write!(f, "Method mismatch for request '{}'", req.method)
             }
-            ExtractError::JsonError { method, error } => {
+            ExtractError::JsonError {
+                id: _,
+                method,
+                error,
+            } => {
                 write!(f, "Invalid request\nMethod: {method}\n error: {error}",)
             }
         }
@@ -42,7 +50,11 @@ impl fmt::Display for ExtractError<Notification> {
             ExtractError::MethodMismatch(req) => {
                 write!(f, "Method mismatch for notification '{}'", req.method)
             }
-            ExtractError::JsonError { method, error } => {
+            ExtractError::JsonError {
+                id: _,
+                method,
+                error,
+            } => {
                 write!(f, "Invalid notification\nMethod: {method}\n error: {error}")
             }
         }

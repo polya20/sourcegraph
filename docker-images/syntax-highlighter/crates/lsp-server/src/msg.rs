@@ -175,24 +175,43 @@ impl Message {
             #[serde(flatten)]
             msg: Message,
         }
-        let text = serde_json::to_string(&JsonRpc { jsonrpc: "2.0", msg: self })?;
+        let text = serde_json::to_string(&JsonRpc {
+            jsonrpc: "2.0",
+            msg: self,
+        })?;
         write_msg_text(w, &text)
     }
 }
 
 impl Response {
     pub fn new_ok<R: Serialize>(id: RequestId, result: R) -> Response {
-        Response { id, result: Some(serde_json::to_value(result).unwrap()), error: None }
+        Response {
+            id,
+            result: Some(serde_json::to_value(result).unwrap()),
+            error: None,
+        }
     }
     pub fn new_err(id: RequestId, code: i32, message: String) -> Response {
-        let error = ResponseError { code, message, data: None };
-        Response { id, result: None, error: Some(error) }
+        let error = ResponseError {
+            code,
+            message,
+            data: None,
+        };
+        Response {
+            id,
+            result: None,
+            error: Some(error),
+        }
     }
 }
 
 impl Request {
     pub fn new<P: Serialize>(id: RequestId, method: String, params: P) -> Request {
-        Request { id, method, params: serde_json::to_value(params).unwrap() }
+        Request {
+            id,
+            method,
+            params: serde_json::to_value(params).unwrap(),
+        }
     }
     pub fn extract<P: DeserializeOwned>(
         self,
@@ -203,7 +222,11 @@ impl Request {
         }
         match serde_json::from_value(self.params) {
             Ok(params) => Ok((self.id, params)),
-            Err(error) => Err(ExtractError::JsonError { method: self.method, error }),
+            Err(error) => Err(ExtractError::JsonError {
+                id: Some(self.id),
+                method: self.method,
+                error,
+            }),
         }
     }
 
@@ -217,7 +240,10 @@ impl Request {
 
 impl Notification {
     pub fn new(method: String, params: impl Serialize) -> Notification {
-        Notification { method, params: serde_json::to_value(params).unwrap() }
+        Notification {
+            method,
+            params: serde_json::to_value(params).unwrap(),
+        }
     }
     pub fn extract<P: DeserializeOwned>(
         self,
@@ -228,7 +254,11 @@ impl Notification {
         }
         match serde_json::from_value(self.params) {
             Ok(params) => Ok(params),
-            Err(error) => Err(ExtractError::JsonError { method: self.method, error }),
+            Err(error) => Err(ExtractError::JsonError {
+                id: None,
+                method: self.method,
+                error,
+            }),
         }
     }
     pub(crate) fn is_exit(&self) -> bool {
@@ -263,8 +293,9 @@ fn read_msg_text(inp: &mut dyn BufRead) -> io::Result<Option<String>> {
         }
         let mut parts = buf.splitn(2, ": ");
         let header_name = parts.next().unwrap();
-        let header_value =
-            parts.next().ok_or_else(|| invalid_data!("malformed header: {:?}", buf))?;
+        let header_value = parts
+            .next()
+            .ok_or_else(|| invalid_data!("malformed header: {:?}", buf))?;
         if header_name.eq_ignore_ascii_case("Content-Length") {
             size = Some(header_value.parse::<usize>().map_err(invalid_data)?);
         }

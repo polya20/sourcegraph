@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 gix = "0.50.1"
 
+anyhow.workspace = true
 scip.workspace = true
 tree-sitter.workspace = true
 
