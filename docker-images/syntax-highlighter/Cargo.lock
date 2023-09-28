@@ -207,6 +207,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "604178f6c5c21f02dc555784810edfb88d34ac2c73b2eae109655649ee73ce3d"
 
 [[package]]
+name = "bfg"
+version = "0.1.0"
+dependencies = [
+ "cast",
+ "gix",
+ "lsp-server",
+ "lsp-types",
+ "scip",
+ "scip-macros",
+ "scip-syntax",
+ "scip-treesitter",
+ "scip-treesitter-languages",
+ "serde",
+ "serde_json",
+ "tabled",
+ "tokio",
+ "tower-lsp",
+ "tree-sitter",
+ "url",
+]
+
+[[package]]
 name = "binascii"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -415,28 +437,6 @@ name = "clru"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8191fa7302e03607ff0e237d4246cc043ff5b3cb9409d995172ba3bea16b807"
-
-[[package]]
-name = "cody-rpc"
-version = "0.1.0"
-dependencies = [
- "cast",
- "gix",
- "lsp-server",
- "lsp-types",
- "scip",
- "scip-macros",
- "scip-syntax",
- "scip-treesitter",
- "scip-treesitter-languages",
- "serde",
- "serde_json",
- "tabled",
- "tokio",
- "tower-lsp",
- "tree-sitter",
- "url",
-]
 
 [[package]]
 name = "colorchoice"
@@ -3095,8 +3095,8 @@ name = "syntect_server"
 version = "1.0.1"
 dependencies = [
  "base64 0.13.1",
+ "bfg",
  "clap 4.3.23",
- "cody-rpc",
  "criterion",
  "futures",
  "futures-task",

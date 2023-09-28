@@ -24,7 +24,7 @@ sg-syntax = { path = "./crates/sg-syntax" }
 scip-treesitter = { path = "./crates/scip-treesitter" }
 scip-treesitter-languages = { path = "./crates/scip-treesitter-languages" }
 scip-syntax = { path = "./crates/scip-syntax" }
-cody-rpc = { path = "./crates/cody-rpc" }
+bfg = { path = "./crates/bfg" }
 # March 20, 2023 - Pinned explicitly with features that match the features
 # required by rocket. Once bazel rules correctly roll up all the features,
 # we can remove this, but until then, this works just fine for building
@@ -47,7 +47,7 @@ members = [
 
     # later, these will be pulled out to a separate repo
     "crates/lsp-server",
-    "crates/cody-rpc",
+    "crates/bfg",
     "crates/scip-macros",
     "crates/scip-syntax",
     "crates/scip-treesitter",
