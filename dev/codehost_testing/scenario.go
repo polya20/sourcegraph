@@ -80,7 +80,7 @@ func NewGitHubScenario(t *testing.T, cfg config.Config) (*GitHubScenario, error)
 		t:        t,
 		client:   client,
 		actions:  make([]*action, 0),
-		reporter: NoopReporter{},
+		reporter: &NoopReporter{},
 	}, nil
 }
 
@@ -91,7 +91,7 @@ func (s *GitHubScenario) SetVerbose() {
 
 // Quiet sets the reporter to a no-op reporter to reduce output
 func (s *GitHubScenario) SetQuiet() {
-	s.reporter = NoopReporter{}
+	s.reporter = &NoopReporter{}
 }
 
 func (s *GitHubScenario) append(actions ...*action) {
