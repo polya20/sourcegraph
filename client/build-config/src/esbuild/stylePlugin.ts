@@ -9,8 +9,10 @@ import sass from 'sass'
 
 import { NODE_MODULES_PATH, ROOT_PATH, WORKSPACE_NODE_MODULES_PATHS } from '../paths'
 
+// eslint-disable import/extensions
+
 const postcssConfig = process.env.BAZEL_BINDIR
-    ? // eslint-disable-next-line @typescript-eslint/no-require-imports, import/extensions
+    ? // eslint-disable-next-line @typescript-eslint/no-require-imports
       require('../../../../../../../../postcss.config')
     : // eslint-disable-next-line @typescript-eslint/no-require-imports
       require('../../../../postcss.config')
