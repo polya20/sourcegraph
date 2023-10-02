@@ -8,6 +8,10 @@ authors = [
 edition = "2021"
 license = "MIT"
 
+[profile.release-without-debug]
+inherits = "release"
+debug = false
+
 [dependencies]
 clap.workspace = true
 rocket.workspace = true
