@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/sourcegraph/sourcegraph/internal/completions/types"
@@ -30,11 +31,11 @@ func (c *fireworksClient) Complete(
 	feature types.CompletionsFeature,
 	requestParams types.CompletionRequestParameters,
 ) (*types.CompletionResponse, error) {
-	// log.Printf("# fireworksClient.Complete")
+	log.Printf("## fireworksClient.Complete")
+	// log.Printf("## fireworksClient.Complete: %+v", *(requestParams.Logprobs))
 	// x := uint8(0)
 	// requestParams.Logprobs = &x
-	// requestParams.Model = "accounts/fireworks/models/starcoder-7b-w8a16"
-	// fireworks/accounts/fireworks/models/starcoder-16b-w8a16
+	requestParams.Model = "accounts/fireworks/models/starcoder-7b-w8a16"
 
 	// TODO: If we add support for other features, Cody Gateway must also be updated.
 	if feature != types.CompletionsFeatureCode {
@@ -70,10 +71,12 @@ func (c *fireworksClient) Stream(
 	requestParams types.CompletionRequestParameters,
 	sendEvent types.SendCompletionEvent,
 ) error {
-	// log.Printf("# fireworksClient.Stream %v", requestParams.Logprobs)
-	// x := uint8(0)
-	// requestParams.Logprobs = &x
-	// requestParams.Model = "accounts/fireworks/models/starcoder-7b-w8a16"
+	log.Printf("## fireworksClient.Stream")
+	// log.Printf("## fireworksClient.Stream %+v", *(requestParams.Logprobs))
+	x := uint8(0)
+	requestParams.Logprobs = &x
+	requestParams.Model = "accounts/fireworks/models/starcoder-7b-w8a16"
+	// Why is this name in use? >>> fireworks/accounts/fireworks/models/starcoder-16b-w8a16
 
 	resp, err := c.makeRequest(ctx, requestParams, true)
 	if err != nil {

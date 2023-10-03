@@ -37,6 +37,7 @@ func NewCodeCompletionsHandler(logger log.Logger, db database.DB) http.Handler {
 // custom values we support
 func isAllowedCustomModel(model string) bool {
 	// if !(envvar.SourcegraphDotComMode()) {
+	// 	log.Printf("########################### !isAllowedCustomModel")
 	// 	return false
 	// }
 
