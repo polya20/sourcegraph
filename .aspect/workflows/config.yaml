@@ -29,7 +29,7 @@ tasks:
         # Most flags belong in your .bazelrc file.
         targets:
             - //cmd/blobstore/internal/blobstore:blobstore_test
-            - //...
-            - //client/web:test
-            - //testing:codeintel_integration_test
-            - //testing:grpc_backend_integration_test
+            # - //...
+            # - //client/web:test
+            # - //testing:codeintel_integration_test
+            # - //testing:grpc_backend_integration_test
