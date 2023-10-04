@@ -28,6 +28,7 @@ tasks:
         # so we are sure to override them.
         # Most flags belong in your .bazelrc file.
         targets:
+            - //cmd/blobstore/internal/blobstore:blobstore_test
             - //...
             - //client/web:test
             - //testing:codeintel_integration_test
